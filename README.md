@@ -1,171 +1,212 @@
 # img_handler
 
-A minimal image upload + retrieval API built with **FastAPI**, designed for simple deployments behind **Nginx** and managed by **systemd**.  
-It supports:
+`img_handler` is a small **FastAPI** service that provides:
 
-- Uploading images via `multipart/form-data`
-- Storing images on the server filesystem
-- Returning a public URL to retrieve the stored image
-- Preventing filename collisions by appending a UTC timestamp
-- Simple authentication using a **static Bearer token** in the `Authorization` header
-- Optional filename normalization (slugified filenames)
+- **Image upload** via `multipart/form-data`
+- **Filesystem storage** of uploaded images
+- **Image retrieval** over HTTP
+- Filename collision handling: keeps the original name, and if it already exists, appends a **UTC timestamp**
+- Simple authentication using a **static Bearer token** (`Authorization: Bearer <token>`)
+
+It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8764** and Nginx exposes the service at **storage.pyzen.io**.
 
 ---
 
-## API Overview
+## API
 
-### 1) Upload an image
-**Endpoint:** `POST /upload-image`  
-**Auth:** Required (`Authorization: Bearer <token>`)  
-**Body:** `multipart/form-data` with a `file` field.
+### Authentication
+All endpoints require:
 
-**Behavior**
-- Accepts common image types (JPEG/PNG/GIF/WebP).
-- Saves the file to disk.
-- If the filename already exists, it saves as `name_<timestamp>.<ext>`.
-- Returns a JSON payload including the image URL.
+```
+Authorization: Bearer <AUTH_TOKEN>
+```
 
-**Response example**
+`AUTH_TOKEN` is provided via environment variable (typically from `/etc/img_handler/img_handler.env` in production).
+
+---
+
+### Upload an image
+**POST** `/upload-image`  
+**Content-Type**: `multipart/form-data`  
+**Field**: `file`
+
+Example:
+```bash
+curl -X POST "https://storage.pyzen.io/upload-image" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -F "file=@/path/to/image.png"
+```
+
+Response (example):
 ```json
 {
-  "stored_as": "my-image_20260207T120102123456Z.png",
+  "stored_as": "image_20260207T120102123456Z.png",
   "bytes": 54321,
-  "image_url": "https://storage.pyzen.io/image/my-image_20260207T120102123456Z.png"
+  "image_url": "https://storage.pyzen.io/image/image_20260207T120102123456Z.png"
 }
-2) Retrieve an uploaded image
-Endpoint: GET /image/{filename}
-Auth: Required (Authorization: Bearer <token>)
-Response: The stored image file.
+```
 
-Quick Start (Local Development)
-Requirements
-Python 3.11+ (3.12 works fine)
+Behavior:
+- If the filename does not exist yet, it is stored as-is.
+- If the filename already exists, it is stored as `<stem>_<timestamp><ext>`.
 
-pip / venv
+---
 
-Install
+### Retrieve an image
+**GET** `/image/{filename}`
+
+Example:
+```bash
+curl -L \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  "https://storage.pyzen.io/image/image.png" \
+  --output downloaded.png
+```
+
+---
+
+## Configuration
+
+### Environment variables
+- `AUTH_TOKEN` (**required**)  
+  Static Bearer token used for authentication.
+- `UPLOAD_DIR` (optional but recommended)  
+  Filesystem directory where images are stored. In the systemd unit, it is typically set to:
+  - `/var/lib/img_handler/uploads`
+
+---
+
+## Local development
+
+### Install
+```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-Configure Auth Token
-Set a static token in your environment:
+```
 
+### Run
+```bash
 export AUTH_TOKEN="dev-token-change-me"
-Run
 uvicorn main:app --reload --host 127.0.0.1 --port 8764
-Using the API
-Upload (curl)
+```
+
+Test upload:
+```bash
 curl -X POST "http://127.0.0.1:8764/upload-image" \
   -H "Authorization: Bearer dev-token-change-me" \
   -F "file=@/path/to/image.png"
-Retrieve (curl)
-curl -L \
-  -H "Authorization: Bearer dev-token-change-me" \
-  "http://127.0.0.1:8764/image/yourfile.png" \
-  --output downloaded.png
-Production Deployment (Nginx + systemd)
-This repo is designed for:
+```
 
-Uvicorn bound to localhost:8764
+---
 
-Nginx serving storage.pyzen.io and proxying to the app
+## Production deployment (systemd + Nginx)
 
-Provided configs
-This repo includes:
+This repository includes:
+- `img_handler.service` (systemd unit)
+- `storage.pyzen.io` (nginx site config)
+- `setup.sh` (installs configs, generates token env file, starts the service)
 
-img_handler.service (systemd unit)
+### What `setup.sh` does
+When executed as root, `setup.sh`:
 
-storage.pyzen.io (nginx site config)
+1. Copies `storage.pyzen.io` to:
+   - `/etc/nginx/sites-available/storage.pyzen.io`
+2. Creates/updates a symlink:
+   - `/etc/nginx/sites-enabled/storage.pyzen.io`
+3. Tests and restarts Nginx
+4. Creates:
+   - `/etc/img_handler/img_handler.env`
+   with a randomly generated `AUTH_TOKEN`
+5. Copies `img_handler.service` to:
+   - `/etc/systemd/system/img_handler.service`
+6. Runs:
+   - `systemctl daemon-reload`
+   - `systemctl enable --now img_handler`
 
-setup.sh (installer script)
-
-One-shot setup
-On the server:
-
+Run:
+```bash
 sudo ./setup.sh
-What it does:
+```
 
-Installs the Nginx site config and enables it
+### Assumptions in the provided configs
+- Uvicorn runs on **127.0.0.1:8764**
+- Nginx proxies to `http://127.0.0.1:8764`
+- TLS certificate paths in the Nginx config use Let’s Encrypt defaults:
+  - `/etc/letsencrypt/live/storage.pyzen.io/fullchain.pem`
+  - `/etc/letsencrypt/live/storage.pyzen.io/privkey.pem`
+- The systemd unit sets:
+  - `UPLOAD_DIR=/var/lib/img_handler/uploads`
 
-Restarts Nginx
+---
 
-Creates /etc/img_handler/img_handler.env with a random AUTH_TOKEN
+## Customization
 
-Installs and starts the img_handler systemd service
+### Change the domain
+Edit `storage.pyzen.io`:
+- Update `server_name`
+- Update certificate paths for your domain
 
-Important: Ensure TLS certs exist at /etc/letsencrypt/live/storage.pyzen.io/... (or edit the nginx config accordingly).
+### Change the internal port
+Update both:
+- systemd `ExecStart ... --port <PORT>`
+- nginx `proxy_pass http://127.0.0.1:<PORT>;`
 
-Customization
-1) Change upload directory
-The upload directory is controlled by UPLOAD_DIR.
-
-In systemd unit:
-
+### Change upload directory
+Update the systemd unit:
+```ini
 Environment="UPLOAD_DIR=/var/lib/img_handler/uploads"
-In local dev, export it:
+```
 
-export UPLOAD_DIR="./uploads"
-2) Increase max upload size
-There are two limits to consider:
+### Increase maximum upload size
+Update both:
+- Nginx `client_max_body_size`
+- Application limit in code (e.g. `MAX_BYTES`) if you enforce one
 
-Application limit (MAX_BYTES in code)
+---
 
-Nginx limit (client_max_body_size in nginx config)
+## Optional: slugified filenames
 
-Update both if you increase file size limits.
+If you want stored filenames to be a slug (instead of the original filename), use `python-slugify`:
 
-3) Allowed image types
-In code, adjust:
+1) Add to `requirements.txt`:
+```txt
+python-slugify>=8.0.0
+```
 
-ALLOWED_MIME
+2) In upload logic:
+- slugify the filename stem
+- keep the extension
+- still append timestamp if it already exists
 
-The detection logic (magic bytes) if you add more types
+---
 
-4) Slugified filenames
-If you want to store slugified filenames rather than raw user filenames, this project can use python-slugify.
+## Troubleshooting
 
-Install:
+### 401 Unauthorized
+- Ensure the header is exactly:
+  `Authorization: Bearer <token>`
+- Verify `AUTH_TOKEN` on the server:
+  - `/etc/img_handler/img_handler.env`
 
-pip install python-slugify
-Then use slug logic in the upload handler (example approach):
+### Nginx 413 Request Entity Too Large
+- Increase `client_max_body_size` in the Nginx config and reload.
 
-take file.filename
+### Service won’t start
+Inspect logs:
+```bash
+sudo journalctl -u img_handler -e --no-pager
+```
 
-slugify the basename (stem)
+---
 
-keep the extension
-
-apply collision timestamping
-
-5) Auth header format
-Current auth expects:
-
-Authorization: Bearer <token>
-
-If you prefer an API key header (e.g. X-API-Key), update the dependency accordingly.
-
-Notes and Security Considerations
-This auth is intentionally simple: a shared static token suitable for internal use or low-risk APIs.
-
-Store AUTH_TOKEN as a secret (systemd env file with mode 600).
-
-Recommended systemd hardening is enabled (ProtectSystem=strict, ReadWritePaths=..., etc.).
-
-Consider adding:
-
-rate limiting (Nginx limit_req)
-
-request logging / audit trail
-
-object storage (S3/MinIO) if you need horizontal scaling
-
-Repo Layout (suggested)
+## Suggested repository structure
+```
 .
 ├── main.py
 ├── requirements.txt
 ├── img_handler.service
 ├── storage.pyzen.io
 ├── setup.sh
-└── README.md
-License
-Add your preferred license (MIT/Apache-2.0/etc.) depending on how you plan to distribute this repository.
+└── README.py
+```
