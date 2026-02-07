@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-AUTH_TOKEN = os.getenv("AUTH_TOKEN", "ddd")  # set in systemd Environment=
+AUTH_TOKEN = os.getenv("AUTH_TOKEN", "")  # set in systemd Environment=
 
 UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "/var/lib/img_handler/uploads"))
 
@@ -16,3 +16,7 @@ EXT_BY_MIME = {
     "image/webp": ".webp",
     "image/gif": ".gif"
 }
+
+PUBLIC_LINK_SECRET = os.getenv("PUBLIC_LINK_SECRET", "")
+
+PUBLIC_URL_TTL_SECONDS = 60 * 60 * 24 * 10  # 10 Days

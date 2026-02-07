@@ -1,4 +1,5 @@
-from fastapi import UploadFile, File, HTTPException, Request
+import time, base64, hashlib
+from fastapi import UploadFile, HTTPException, Request
 from fastapi.responses import FileResponse
 from pathlib import Path, PurePath
 from uuid import uuid4
@@ -6,11 +7,11 @@ from datetime import datetime, timezone
 from typing import Optional
 from slugify import slugify
 from config.settings import (
-    MAX_BYTES, UPLOAD_DIR, EXT_BY_MIME
+    MAX_BYTES, UPLOAD_DIR, EXT_BY_MIME,
+    PUBLIC_LINK_SECRET, PUBLIC_URL_TTL_SECONDS
 )
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def detect_image_ext(data: bytes) -> Optional[str]:
     # JPEG: FF D8 FF
@@ -72,6 +73,24 @@ def add_timestamp_if_exists(path: Path) -> Path:
     return candidate
 
 
+def make_public_url(request, stored_filename: str, ttl_seconds: int = PUBLIC_URL_TTL_SECONDS) -> str:
+    if not PUBLIC_LINK_SECRET:
+        raise RuntimeError("PUBLIC_LINK_SECRET is not configured")
+
+    expires = int(time.time()) + ttl_seconds
+    uri = f"/images/public/{stored_filename}"
+
+    # MUST match nginx secure_link_md5 string exactly:
+    # "$secure_link_expires$uri <secret>"
+    raw = f"{expires}{uri} {PUBLIC_LINK_SECRET}".encode("utf-8")
+
+    sig = base64.urlsafe_b64encode(hashlib.md5(raw).digest()).decode("ascii").rstrip("=")
+
+    # request.base_url includes scheme/host from nginx proxy headers
+    return f"{str(request.base_url).rstrip('/')}{uri}?md5={sig}&expires={expires}"
+
+
+
 async def upload_single_image(request: Request, file: UploadFile):
     data = await file.read()
     await file.close()
@@ -103,10 +122,16 @@ async def upload_single_image(request: Request, file: UploadFile):
     stored_filename = target_path.name
     image_url = request.url_for("get_image", filename=stored_filename)
 
+    ttl_seconds = PUBLIC_URL_TTL_SECONDS
+    public_url = make_public_url(request, stored_filename, ttl_seconds)
+    expiry_timestamp = int(time.time()) + ttl_seconds
+    expiry = datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc).strftime("%d/%m/%Y %H:%M")
+
     return {
-        "stored_as": stored_filename,
-        "bytes": len(data),
-        "image_url": str(image_url),
+        "stored_filename": stored_filename,
+        "image_url": str(image_url),  # protected
+        "public_url": public_url,  # temporary, no auth
+        "public_url_expiry": expiry
     }
 
 
