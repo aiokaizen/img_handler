@@ -8,7 +8,7 @@
 - Filename collision handling: keeps the original name, and if it already exists, appends a **UTC timestamp**
 - Simple authentication using a **static Bearer token** (`Authorization: Bearer <token>`)
 
-It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8659** and Nginx exposes the service at **storage.pyzen.io**.
+It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8659** and Nginx exposes the service at **img_handler.com**.
 
 ---
 
@@ -32,7 +32,7 @@ Authorization: Bearer <AUTH_TOKEN>
 
 Example:
 ```bash
-curl -X POST "https://storage.pyzen.io/images/upload" \
+curl -X POST "https://img_handler.com/images/upload" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -F "file=@/path/to/image.png"
 ```
@@ -42,7 +42,7 @@ Response (example):
 {
   "stored_as": "slugified-image-name.png",
   "bytes": 54321,
-  "image_url": "https://storage.pyzen.io/image/slugified-image-name.png"
+  "image_url": "https://img_handler.com/image/slugified-image-name.png"
 }
 ```
 
@@ -59,7 +59,7 @@ Example:
 ```bash
 curl -L \
   -H "Authorization: Bearer $AUTH_TOKEN" \
-  "https://storage.pyzen.io/images/image.png" \
+  "https://img_handler.com/images/image.png" \
   --output downloaded.png
 ```
 
@@ -104,16 +104,16 @@ curl -X POST "http://127.0.0.1:8659/upload-image" \
 
 This repository includes:
 - `img_handler.service` (systemd unit)
-- `storage.pyzen.io` (nginx site config)
+- `img_handler.com` (nginx site config)
 - `setup.sh` (installs configs, generates token env file, starts the service)
 
 ### What `setup.sh` does
 When executed as root, `setup.sh`:
 
-1. Copies `storage.pyzen.io` to:
-   - `/etc/nginx/sites-available/storage.pyzen.io`
+1. Copies `img_handler.com` to:
+   - `/etc/nginx/sites-available/img_handler.com`
 2. Creates/updates a symlink:
-   - `/etc/nginx/sites-enabled/storage.pyzen.io`
+   - `/etc/nginx/sites-enabled/img_handler.com`
 3. Tests and restarts Nginx
 4. Creates:
    - `/etc/img_handler/img_handler.env`
@@ -133,8 +133,8 @@ sudo ./setup.sh
 - Uvicorn runs on **127.0.0.1:8659**
 - Nginx proxies to `http://127.0.0.1:8659`
 - TLS certificate paths in the Nginx config use Let’s Encrypt defaults:
-  - `/etc/letsencrypt/live/storage.pyzen.io/fullchain.pem`
-  - `/etc/letsencrypt/live/storage.pyzen.io/privkey.pem`
+  - `/etc/letsencrypt/live/img_handler.com/fullchain.pem`
+  - `/etc/letsencrypt/live/img_handler.com/privkey.pem`
 - The systemd unit sets:
   - `UPLOAD_DIR=/var/lib/img_handler/uploads`
 
@@ -143,7 +143,7 @@ sudo ./setup.sh
 ## Customization
 
 ### Change the domain
-Edit `storage.pyzen.io`:
+Edit `img_handler.com`:
 - Update `server_name`
 - Update certificate paths for your domain
 
@@ -206,7 +206,7 @@ sudo journalctl -u img_handler -e --no-pager
 ├── main.py
 ├── requirements.txt
 ├── img_handler.service
-├── storage.pyzen.io
+├── img_handler.com
 ├── setup.sh
 └── README.py
 ```

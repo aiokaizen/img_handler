@@ -3,14 +3,14 @@ set -euo pipefail
 
 # setup.sh
 # Assumes these files are in the same directory as this script:
-#   - storage.pyzen.io        (nginx site config)
+#   - img_handler.com        (nginx site config)
 #   - img_handler.service     (systemd unit)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-NGINX_SRC="${SCRIPT_DIR}/storage.pyzen.io"
-NGINX_AVAIL="/etc/nginx/sites-available/storage.pyzen.io"
-NGINX_ENABLED="/etc/nginx/sites-enabled/storage.pyzen.io"
+NGINX_SRC="${SCRIPT_DIR}/img_handler.com"
+NGINX_AVAIL="/etc/nginx/sites-available/img_handler.com"
+NGINX_ENABLED="/etc/nginx/sites-enabled/img_handler.com"
 
 ENV_DIR="/etc/img_handler"
 ENV_FILE="${ENV_DIR}/img_handler.env"
