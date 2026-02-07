@@ -4,6 +4,7 @@ from pathlib import Path, PurePath
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional
+from slugify import slugify
 
 app = FastAPI()
 
@@ -39,6 +40,22 @@ def detect_image_ext(data: bytes) -> Optional[str]:
         return ".webp"
 
     return None
+
+
+def slugified_filename(original: str) -> str:
+    # drop any path components
+    name = PurePath(original).name
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    p = Path(name)
+    stem, suffix = p.stem, p.suffix.lower()
+
+    slug = slugify(stem, separator="-")
+    if not slug:
+        raise HTTPException(status_code=400, detail="Filename cannot be slugified")
+
+    return f"{slug}{suffix}"
 
 
 def safe_filename(original: str) -> str:
@@ -97,11 +114,9 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
             detail=f"Filename extension '{original_ext}' does not match uploaded image type",
         )
 
-    target_path = UPLOAD_DIR / original_name
-    target_path = add_timestamp_if_exists(target_path)
-
+    slug_name = slugified_filename(file.filename)
+    target_path = add_timestamp_if_exists(UPLOAD_DIR / slug_name)
     target_path.write_bytes(data)
-
     stored_filename = target_path.name
     image_url = request.url_for("get_image", filename=stored_filename)
 
