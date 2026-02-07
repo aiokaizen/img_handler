@@ -8,7 +8,7 @@
 - Filename collision handling: keeps the original name, and if it already exists, appends a **UTC timestamp**
 - Simple authentication using a **static Bearer token** (`Authorization: Bearer <token>`)
 
-It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8764** and Nginx exposes the service at **storage.pyzen.io**.
+It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8659** and Nginx exposes the service at **storage.pyzen.io**.
 
 ---
 
@@ -26,13 +26,13 @@ Authorization: Bearer <AUTH_TOKEN>
 ---
 
 ### Upload an image
-**POST** `/upload-image`  
+**POST** `/images/upload`  
 **Content-Type**: `multipart/form-data`  
 **Field**: `file`
 
 Example:
 ```bash
-curl -X POST "https://storage.pyzen.io/upload-image" \
+curl -X POST "https://storage.pyzen.io/images/upload" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -F "file=@/path/to/image.png"
 ```
@@ -40,26 +40,26 @@ curl -X POST "https://storage.pyzen.io/upload-image" \
 Response (example):
 ```json
 {
-  "stored_as": "image_20260207T120102123456Z.png",
+  "stored_as": "slugified-image-name.png",
   "bytes": 54321,
-  "image_url": "https://storage.pyzen.io/image/image_20260207T120102123456Z.png"
+  "image_url": "https://storage.pyzen.io/image/slugified-image-name.png"
 }
 ```
 
 Behavior:
 - If the filename does not exist yet, it is stored as-is.
-- If the filename already exists, it is stored as `<stem>_<timestamp><ext>`.
+- If the filename already exists, it is stored as `<slugified_stem>_<timestamp><ext>`.
 
 ---
 
 ### Retrieve an image
-**GET** `/image/{filename}`
+**GET** `/images/{filename}`
 
 Example:
 ```bash
 curl -L \
   -H "Authorization: Bearer $AUTH_TOKEN" \
-  "https://storage.pyzen.io/image/image.png" \
+  "https://storage.pyzen.io/images/image.png" \
   --output downloaded.png
 ```
 
@@ -88,12 +88,12 @@ pip install -r requirements.txt
 ### Run
 ```bash
 export AUTH_TOKEN="dev-token-change-me"
-uvicorn main:app --reload --host 127.0.0.1 --port 8764
+uvicorn main:app --reload --host 127.0.0.1 --port 8659
 ```
 
 Test upload:
 ```bash
-curl -X POST "http://127.0.0.1:8764/upload-image" \
+curl -X POST "http://127.0.0.1:8659/upload-image" \
   -H "Authorization: Bearer dev-token-change-me" \
   -F "file=@/path/to/image.png"
 ```
@@ -130,8 +130,8 @@ sudo ./setup.sh
 ```
 
 ### Assumptions in the provided configs
-- Uvicorn runs on **127.0.0.1:8764**
-- Nginx proxies to `http://127.0.0.1:8764`
+- Uvicorn runs on **127.0.0.1:8659**
+- Nginx proxies to `http://127.0.0.1:8659`
 - TLS certificate paths in the Nginx config use Let’s Encrypt defaults:
   - `/etc/letsencrypt/live/storage.pyzen.io/fullchain.pem`
   - `/etc/letsencrypt/live/storage.pyzen.io/privkey.pem`
