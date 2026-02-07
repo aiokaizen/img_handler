@@ -1,6 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from pathlib import Path
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi.responses import FileResponse
+from pathlib import Path, PurePath
 from uuid import uuid4
+from datetime import datetime, timezone
+from typing import Optional
 
 app = FastAPI()
 
@@ -8,10 +11,17 @@ UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
-ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+ALLOWED_MIME = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+EXT_BY_MIME = {
+    "image/jpeg": ".jpeg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif"
+}
 
 
-def detect_image_ext(data: bytes) -> str | None:
+def detect_image_ext(data: bytes) -> Optional[str]:
     # JPEG: FF D8 FF
     if len(data) >= 3 and data[0:3] == b"\xFF\xD8\xFF":
         return ".jpg"
@@ -31,9 +41,35 @@ def detect_image_ext(data: bytes) -> str | None:
     return None
 
 
-@app.post("/upload-image")
-async def upload_image(file: UploadFile = File(...)):
-    # Basic allowlist on declared MIME
+def safe_filename(original: str) -> str:
+    # Drops any path components (prevents path traversal like ../../etc/passwd)
+    name = PurePath(original).name
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return name
+
+
+def add_timestamp_if_exists(path: Path) -> Path:
+    if not path.exists():
+        return path
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")  # microseconds to reduce collisions
+    stem = path.stem
+    suffix = path.suffix
+    candidate = path.with_name(f"{stem}_{ts}{suffix}")
+
+    # Extremely unlikely, but just in case:
+    if candidate.exists():
+        candidate = path.with_name(f"{stem}_{ts}_{uuid4().hex}{suffix}")
+
+    return candidate
+
+
+@app.post("/images/upload")
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
     if not file.content_type or file.content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail="Unsupported media type")
 
@@ -45,18 +81,44 @@ async def upload_image(file: UploadFile = File(...)):
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
 
-    ext = detect_image_ext(data)
-    if ext is None:
+    detected_ext = detect_image_ext(data)
+    if detected_ext is None:
         raise HTTPException(status_code=400, detail="Invalid image content")
 
-    filename = f"{uuid4().hex}{ext}"
-    path = UPLOAD_DIR / filename
+    # Keep the original filename, but enforce that extension matches the actual bytes
+    original_name = safe_filename(file.filename)
+    original_path = Path(original_name)
+    original_ext = original_path.suffix.lower()
 
-    path.write_bytes(data)
+    expected_ext = EXT_BY_MIME[file.content_type]
+    if original_ext not in {expected_ext, detected_ext}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Filename extension '{original_ext}' does not match uploaded image type",
+        )
+
+    target_path = UPLOAD_DIR / original_name
+    target_path = add_timestamp_if_exists(target_path)
+
+    target_path.write_bytes(data)
+
+    stored_filename = target_path.name
+    image_url = request.url_for("get_image", filename=stored_filename)
 
     return {
-        "stored_as": filename,
-        "path": str(path),
+        "stored_as": stored_filename,
         "bytes": len(data),
-        "declared_content_type": file.content_type,
+        "image_url": str(image_url),
     }
+
+
+@app.get("/images/{filename}", name="get_image")
+def get_image(filename: str):
+    filename = safe_filename(filename)
+    path = UPLOAD_DIR / filename
+
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # FileResponse sets a reasonable Content-Type based on filename extension
+    return FileResponse(path)
