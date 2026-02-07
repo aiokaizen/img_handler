@@ -1,0 +1,42 @@
+[Unit]
+Description=img_handler (FastAPI/Uvicorn)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+
+User=img_handler
+Group=img_handler
+
+WorkingDirectory=/opt/img_handler
+
+# Secrets/config
+EnvironmentFile=/etc/img_handler/img_handler.env
+
+# Creates /var/lib/img_handler (and keeps ownership consistent)
+StateDirectory=img_handler
+StateDirectoryMode=0750
+
+# App env
+Environment="UPLOAD_DIR=/var/lib/img_handler/uploads"
+Environment="PYTHONUNBUFFERED=1"
+
+# Start Uvicorn on 127.0.0.1:8764
+# Adjust venv path and module:app if needed (main:app is assumed)
+ExecStart=/opt/img_handler/venv/bin/uvicorn main:app \
+  --host 127.0.0.1 --port 8764 \
+  --proxy-headers --forwarded-allow-ips 127.0.0.1
+
+Restart=on-failure
+RestartSec=2
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/img_handler/uploads
+
+[Install]
+WantedBy=multi-user.target
