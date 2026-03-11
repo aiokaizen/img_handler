@@ -1,212 +1,172 @@
 # img_handler
 
-`img_handler` is a small **FastAPI** service that provides:
+`img_handler` is a small FastAPI service that provides:
 
-- **Image upload** via `multipart/form-data`
-- **Filesystem storage** of uploaded images
-- **Image retrieval** over HTTP
-- Filename collision handling: keeps the original name, and if it already exists, appends a **UTC timestamp**
-- Simple authentication using a **static Bearer token** (`Authorization: Bearer <token>`)
+- authenticated image upload
+- authenticated image retrieval
+- authenticated image processing with a branded glassmorphism overlay
+- filesystem-backed storage
+- temporary signed public URLs for uploaded assets
 
-It is designed to run behind **Nginx** and be managed by **systemd**. In the provided production configuration, Uvicorn listens on **127.0.0.1:8659** and Nginx exposes the service at **img_handler.com**.
-
----
+It is designed to run behind Nginx and be managed by systemd. In the provided production configuration, Uvicorn listens on `127.0.0.1:8764` and Nginx proxies requests from `img_handler.com`.
 
 ## API
 
-### Authentication
-All endpoints require:
+All application endpoints require:
 
-```
+```http
 Authorization: Bearer <AUTH_TOKEN>
 ```
 
-`AUTH_TOKEN` is provided via environment variable (typically from `/etc/img_handler/img_handler.env` in production).
+### `POST /images/upload`
 
----
-
-### Upload an image
-**POST** `/images/upload`  
-**Content-Type**: `multipart/form-data`  
-**Field**: `file`
+Uploads an image from `multipart/form-data` using the `file` field.
 
 Example:
+
 ```bash
 curl -X POST "https://img_handler.com/images/upload" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -F "file=@/path/to/image.png"
 ```
 
-Response (example):
+Successful response:
+
 ```json
 {
-  "stored_as": "slugified-image-name.png",
-  "bytes": 54321,
-  "image_url": "https://img_handler.com/image/slugified-image-name.png"
+  "stored_filename": "my-image.png",
+  "image_url": "https://img_handler.com/images/my-image.png",
+  "public_url": "https://img_handler.com/images/public/my-image.png?md5=...&expires=...",
+  "public_url_expiry": "11/03/2026 18:30"
 }
 ```
 
 Behavior:
-- If the filename does not exist yet, it is stored as-is.
-- If the filename already exists, it is stored as `<slugified_stem>_<timestamp><ext>`.
 
----
+- filenames are slugified before storage
+- if a target filename already exists, a UTC timestamp is appended
+- uploads are limited to `10 MB`
+- only JPEG, PNG, WebP, and GIF are accepted
 
-### Retrieve an image
-**GET** `/images/{filename}`
+### `POST /images/process`
+
+Accepts a source image and overlays a centered title/subtitle card plus branding. Required fields:
+
+- `file`
+- `title`
+
+Optional fields:
+
+- `subtitle`
 
 Example:
+
+```bash
+curl -X POST "https://img_handler.com/images/process" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -F "file=@/path/to/image.png" \
+  -F "title=Nomad Mouse" \
+  -F "subtitle=Travel gear"
+```
+
+The processed image is stored as JPEG and returns the same response shape as `/images/upload`.
+
+### `GET /images/{filename}`
+
+Fetches a stored image through the authenticated app route.
+
+Example:
+
 ```bash
 curl -L \
   -H "Authorization: Bearer $AUTH_TOKEN" \
-  "https://img_handler.com/images/image.png" \
+  "https://img_handler.com/images/my-image.png" \
   --output downloaded.png
 ```
 
----
+### `GET /images/public/{filename}`
+
+This route is served directly by Nginx and does not use Bearer auth. Access is controlled by the signed `md5` and `expires` query parameters returned by the app.
 
 ## Configuration
 
-### Environment variables
-- `AUTH_TOKEN` (**required**)  
-  Static Bearer token used for authentication.
-- `UPLOAD_DIR` (optional but recommended)  
-  Filesystem directory where images are stored. In the systemd unit, it is typically set to:
-  - `/var/lib/img_handler/uploads`
+Environment variables:
 
----
+- `AUTH_TOKEN` (required): static Bearer token used by the FastAPI app
+- `PUBLIC_LINK_SECRET` (required for signed public URLs): shared secret used by both FastAPI and Nginx
+- `UPLOAD_DIR` (optional): directory where images are stored. Defaults to `/var/lib/img_handler/uploads`
+- `PUBLIC_URL_TTL_SECONDS` (optional): signed public URL lifetime. Defaults to `864000` seconds (10 days)
 
 ## Local development
 
-### Install
+Install:
+
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run
+Run:
+
 ```bash
 export AUTH_TOKEN="dev-token-change-me"
-uvicorn main:app --reload --host 127.0.0.1 --port 8659
+export PUBLIC_LINK_SECRET="dev-public-link-secret"
+uvicorn main:app --reload --host 127.0.0.1 --port 8764
 ```
 
 Test upload:
+
 ```bash
-curl -X POST "http://127.0.0.1:8659/upload-image" \
+curl -X POST "http://127.0.0.1:8764/images/upload" \
   -H "Authorization: Bearer dev-token-change-me" \
   -F "file=@/path/to/image.png"
 ```
 
----
-
-## Production deployment (systemd + Nginx)
+## Production deployment
 
 This repository includes:
-- `img_handler.service` (systemd unit)
-- `img_handler.com` (nginx site config)
-- `setup.sh` (installs configs, generates token env file, starts the service)
 
-### What `setup.sh` does
-When executed as root, `setup.sh`:
+- `system/img_handler.service`
+- `system/img_handler.com`
+- `system/setup.sh`
 
-1. Copies `img_handler.com` to:
-   - `/etc/nginx/sites-available/img_handler.com`
-2. Creates/updates a symlink:
-   - `/etc/nginx/sites-enabled/img_handler.com`
-3. Tests and restarts Nginx
-4. Creates:
-   - `/etc/img_handler/img_handler.env`
-   with a randomly generated `AUTH_TOKEN`
-5. Copies `img_handler.service` to:
-   - `/etc/systemd/system/img_handler.service`
-6. Runs:
-   - `systemctl daemon-reload`
-   - `systemctl enable --now img_handler`
+`system/setup.sh`:
+
+1. creates or preserves `AUTH_TOKEN` and `PUBLIC_LINK_SECRET` in `/etc/img_handler/img_handler.env`
+2. renders the Nginx config template with the shared public-link secret
+3. installs and reloads Nginx
+4. installs and starts the systemd service
 
 Run:
+
 ```bash
-sudo ./setup.sh
+sudo ./system/setup.sh
 ```
 
-### Assumptions in the provided configs
-- Uvicorn runs on **127.0.0.1:8659**
-- Nginx proxies to `http://127.0.0.1:8659`
-- TLS certificate paths in the Nginx config use Let’s Encrypt defaults:
-  - `/etc/letsencrypt/live/img_handler.com/fullchain.pem`
-  - `/etc/letsencrypt/live/img_handler.com/privkey.pem`
-- The systemd unit sets:
-  - `UPLOAD_DIR=/var/lib/img_handler/uploads`
+## Operational notes
 
----
-
-## Customization
-
-### Change the domain
-Edit `img_handler.com`:
-- Update `server_name`
-- Update certificate paths for your domain
-
-### Change the internal port
-Update both:
-- systemd `ExecStart ... --port <PORT>`
-- nginx `proxy_pass http://127.0.0.1:<PORT>;`
-
-### Change upload directory
-Update the systemd unit:
-```ini
-Environment="UPLOAD_DIR=/var/lib/img_handler/uploads"
-```
-
-### Increase maximum upload size
-Update both:
-- Nginx `client_max_body_size`
-- Application limit in code (e.g. `MAX_BYTES`) if you enforce one
-
----
-
-## Optional: slugified filenames
-
-If you want stored filenames to be a slug (instead of the original filename), use `python-slugify`:
-
-1) Add to `requirements.txt`:
-```txt
-python-slugify>=8.0.0
-```
-
-2) In upload logic:
-- slugify the filename stem
-- keep the extension
-- still append timestamp if it already exists
-
----
+- The service trusts proxy headers from local Nginx only
+- `client_max_body_size` in Nginx is set to `15m`
+- the app enforces its own `10 MB` payload cap
+- signed public URLs are intended for temporary sharing, not permanent public hosting
 
 ## Troubleshooting
 
-### 401 Unauthorized
-- Ensure the header is exactly:
-  `Authorization: Bearer <token>`
-- Verify `AUTH_TOKEN` on the server:
-  - `/etc/img_handler/img_handler.env`
+### `401 Unauthorized`
 
-### Nginx 413 Request Entity Too Large
-- Increase `client_max_body_size` in the Nginx config and reload.
+- ensure the header is exactly `Authorization: Bearer <token>`
+- verify `AUTH_TOKEN` in `/etc/img_handler/img_handler.env`
 
-### Service won’t start
+### Signed public URLs return `403` or `410`
+
+- verify `PUBLIC_LINK_SECRET` matches between `/etc/img_handler/img_handler.env` and the rendered Nginx config
+- `410` means the URL expired
+
+### Service will not start
+
 Inspect logs:
+
 ```bash
 sudo journalctl -u img_handler -e --no-pager
-```
-
----
-
-## Suggested repository structure
-```
-.
-├── main.py
-├── requirements.txt
-├── img_handler.service
-├── img_handler.com
-├── setup.sh
-└── README.py
 ```

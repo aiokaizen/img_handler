@@ -1,4 +1,4 @@
-import time, base64, hashlib
+import io, time, base64, hashlib
 from fastapi import UploadFile, HTTPException, Request
 from fastapi.responses import FileResponse
 from pathlib import Path, PurePath
@@ -6,10 +6,13 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional
 from slugify import slugify
+from PIL import Image, UnidentifiedImageError
+from api_functions.img_processing import apply_glass_title_brand
 from config.settings import (
-    MAX_BYTES, UPLOAD_DIR, EXT_BY_MIME,
+    MAX_BYTES, UPLOAD_DIR, EXT_BY_MIME, ALLOWED_MIME,
     PUBLIC_LINK_SECRET, PUBLIC_URL_TTL_SECONDS
 )
+
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -75,7 +78,7 @@ def add_timestamp_if_exists(path: Path) -> Path:
 
 def make_public_url(request, stored_filename: str, ttl_seconds: int = PUBLIC_URL_TTL_SECONDS) -> str:
     if not PUBLIC_LINK_SECRET:
-        raise RuntimeError("PUBLIC_LINK_SECRET is not configured")
+        raise HTTPException(status_code=500, detail="PUBLIC_LINK_SECRET is not configured")
 
     expires = int(time.time()) + ttl_seconds
     uri = f"/images/public/{stored_filename}"
@@ -90,8 +93,7 @@ def make_public_url(request, stored_filename: str, ttl_seconds: int = PUBLIC_URL
     return f"{str(request.base_url).rstrip('/')}{uri}?md5={sig}&expires={expires}"
 
 
-
-async def upload_single_image(request: Request, file: UploadFile):
+async def read_and_validate_image_upload(file: UploadFile) -> tuple[bytes, str]:
     data = await file.read()
     await file.close()
 
@@ -100,21 +102,30 @@ async def upload_single_image(request: Request, file: UploadFile):
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
 
+    if not file.content_type or file.content_type not in ALLOWED_MIME:
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+
     detected_ext = detect_image_ext(data)
     if detected_ext is None:
         raise HTTPException(status_code=400, detail="Invalid image content")
 
-    # Keep the original filename, but enforce that extension matches the actual bytes
     original_name = safe_filename(file.filename)
     original_path = Path(original_name)
     original_ext = original_path.suffix.lower()
-
     expected_ext = EXT_BY_MIME[file.content_type]
+
     if original_ext not in {expected_ext, detected_ext}:
         raise HTTPException(
             status_code=400,
             detail=f"Filename extension '{original_ext}' does not match uploaded image type",
         )
+
+    return data, detected_ext
+
+
+
+async def upload_single_image(request: Request, file: UploadFile):
+    data, _ = await read_and_validate_image_upload(file)
 
     slug_name = slugified_filename(file.filename)
     target_path = add_timestamp_if_exists(UPLOAD_DIR / slug_name)
@@ -138,11 +149,51 @@ async def upload_single_image(request: Request, file: UploadFile):
 def get_single_image(filename: str):
     filename = safe_filename(filename)
     path = UPLOAD_DIR / filename
-    print("UPLOAD_DIR:", UPLOAD_DIR)
-    print("path:", path)
 
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
 
     # FileResponse sets a reasonable Content-Type based on filename extension
     return FileResponse(path)
+
+
+async def process_image(
+    request: Request,
+    file: UploadFile,
+    title: str,
+    subtitle: str,
+):
+    data, _ = await read_and_validate_image_upload(file)
+
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid image content") from exc
+
+    edited = apply_glass_title_brand(img, title=title, subtitle=subtitle, brand="nomadmouse.com")
+
+    # Save as JPEG or PNG (JPEG shown; adjust quality as needed)
+    out = io.BytesIO()
+    edited.convert("RGB").save(out, format="JPEG", quality=92, optimize=True)
+    out_bytes = out.getvalue()
+    
+    slug_name = slugified_filename(file.filename)
+    forced_name = str(Path(slug_name).with_suffix(".jpeg"))
+    target_path = add_timestamp_if_exists(Path(UPLOAD_DIR) / forced_name)
+    target_path.write_bytes(out_bytes)
+
+    stored_filename = target_path.name
+    image_url = request.url_for("get_image", filename=stored_filename)
+
+    ttl_seconds = PUBLIC_URL_TTL_SECONDS
+    public_url = make_public_url(request, stored_filename, ttl_seconds)
+    expiry_timestamp = int(time.time()) + ttl_seconds
+    expiry = datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc).strftime("%d/%m/%Y %H:%M")
+
+    return {
+        "stored_filename": stored_filename,
+        "image_url": str(image_url),  # protected
+        "public_url": public_url,  # temporary, no auth
+        "public_url_expiry": expiry
+    }

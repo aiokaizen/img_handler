@@ -32,7 +32,7 @@ server {
 
         # Validate signature and expiry (secure_link module)
         secure_link $arg_md5,$arg_expires;
-        secure_link_md5 "$secure_link_expires$uri __f0x_wagvJoj1n4@x=Fa-mT#N3,£oo?^mXz7Vln87!=Ay21RY_CHANGE_ME";
+        secure_link_md5 "$secure_link_expires$uri __PUBLIC_LINK_SECRET__";
 
         # $secure_link = ""  -> invalid signature / missing params
         # $secure_link = "0" -> expired

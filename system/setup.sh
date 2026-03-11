@@ -3,7 +3,7 @@ set -euo pipefail
 
 # setup.sh
 # Assumes these files are in the same directory as this script:
-#   - img_handler.com        (nginx site config)
+#   - img_handler.com        (nginx site config template)
 #   - img_handler.service     (systemd unit)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,18 +33,18 @@ require_files() {
 }
 
 step1_nginx_install() {
-  echo "[1/4] Installing Nginx site config..."
-  cp -f "$NGINX_SRC" "$NGINX_AVAIL"
+  echo "[2/4] Installing Nginx site config..."
+  sed "s|__PUBLIC_LINK_SECRET__|${PUBLIC_LINK_SECRET}|g" "$NGINX_SRC" > "$NGINX_AVAIL"
   ln -sfn "$NGINX_AVAIL" "$NGINX_ENABLED"
 }
 
 step2_nginx_restart() {
-  echo "[2/4] Testing and restarting Nginx..."
+  echo "[3/4] Testing and restarting Nginx..."
   nginx -t
   systemctl restart nginx
 }
 
-generate_token() {
+generate_secret() {
   # Prefer openssl, fallback to python
   if command -v openssl >/dev/null 2>&1; then
     openssl rand -hex 32
@@ -56,19 +56,37 @@ PY
   fi
 }
 
+read_existing_env_value() {
+  local key="$1"
+  if [[ -f "$ENV_FILE" ]]; then
+    grep -E "^${key}=" "$ENV_FILE" | tail -n1 | cut -d= -f2- || true
+  fi
+}
+
 step3_env_file() {
-  echo "[3/4] Creating / updating env file with a random AUTH_TOKEN..."
+  echo "[1/4] Creating / updating env file with service secrets..."
   mkdir -p "$ENV_DIR"
   chmod 700 "$ENV_DIR"
 
-  TOKEN="$(generate_token)"
+  AUTH_TOKEN="$(read_existing_env_value AUTH_TOKEN)"
+  PUBLIC_LINK_SECRET="$(read_existing_env_value PUBLIC_LINK_SECRET)"
+
+  if [[ -z "$AUTH_TOKEN" ]]; then
+    AUTH_TOKEN="$(generate_secret)"
+  fi
+
+  if [[ -z "$PUBLIC_LINK_SECRET" ]]; then
+    PUBLIC_LINK_SECRET="$(generate_secret)"
+  fi
+
   umask 077
   {
-    echo "AUTH_TOKEN=${TOKEN}"
+    echo "AUTH_TOKEN=${AUTH_TOKEN}"
+    echo "PUBLIC_LINK_SECRET=${PUBLIC_LINK_SECRET}"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 
-  echo "   Wrote ${ENV_FILE} (permissions 600)."
+   echo "   Wrote ${ENV_FILE} (permissions 600)."
 }
 
 step4_systemd_install_start() {
@@ -84,9 +102,9 @@ main() {
   require_root
   require_files
 
+  step3_env_file
   step1_nginx_install
   step2_nginx_restart
-  step3_env_file
   step4_systemd_install_start
 
   echo "Done."

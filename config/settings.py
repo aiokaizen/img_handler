@@ -19,4 +19,4 @@ EXT_BY_MIME = {
 
 PUBLIC_LINK_SECRET = os.getenv("PUBLIC_LINK_SECRET", "")
 
-PUBLIC_URL_TTL_SECONDS = 60 * 60 * 24 * 10  # 10 Days
+PUBLIC_URL_TTL_SECONDS = int(os.getenv("PUBLIC_URL_TTL_SECONDS", "864000"))  # Defaults to 10 Days
