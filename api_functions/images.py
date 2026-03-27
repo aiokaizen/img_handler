@@ -7,7 +7,12 @@ from datetime import datetime, timezone
 from typing import Optional
 from slugify import slugify
 from PIL import Image, UnidentifiedImageError
-from api_functions.img_processing import apply_glass_title_brand
+from api_functions.img_processing import (
+    VALID_POSITIONS,
+    VALID_THEMES,
+    VALID_TITLE_ALIGNS,
+    apply_title_layout,
+)
 from config.settings import (
     MAX_BYTES, UPLOAD_DIR, EXT_BY_MIME, ALLOWED_MIME,
     PUBLIC_LINK_SECRET, PUBLIC_URL_TTL_SECONDS
@@ -162,8 +167,22 @@ async def process_image(
     file: UploadFile,
     title: str,
     subtitle: str,
+    *,
+    position: str,
+    theme: str,
+    title_align: str,
+    brand: str,
 ):
     data, _ = await read_and_validate_image_upload(file)
+
+    if position not in VALID_POSITIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported position '{position}'")
+
+    if theme not in VALID_THEMES:
+        raise HTTPException(status_code=400, detail=f"Unsupported theme '{theme}'")
+
+    if title_align not in VALID_TITLE_ALIGNS:
+        raise HTTPException(status_code=400, detail=f"Unsupported title alignment '{title_align}'")
 
     try:
         img = Image.open(io.BytesIO(data))
@@ -171,7 +190,15 @@ async def process_image(
     except (UnidentifiedImageError, OSError) as exc:
         raise HTTPException(status_code=400, detail="Invalid image content") from exc
 
-    edited = apply_glass_title_brand(img, title=title, subtitle=subtitle, brand="nomadmouse.com")
+    edited = apply_title_layout(
+        img,
+        title=title,
+        subtitle=subtitle,
+        brand=brand,
+        position=position,
+        theme=theme,
+        title_align=title_align,
+    )
 
     # Save as JPEG or PNG (JPEG shown; adjust quality as needed)
     out = io.BytesIO()

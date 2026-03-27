@@ -1,2 +1,6 @@
 venv/
 *.pyc
+__pycache__/
+preview_outputs/
+videos/
+*Zone.Identifier

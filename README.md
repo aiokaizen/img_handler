@@ -4,7 +4,7 @@
 
 - authenticated image upload
 - authenticated image retrieval
-- authenticated image processing with a branded glassmorphism overlay
+- authenticated image processing with a food-blog editorial title card
 - filesystem-backed storage
 - temporary signed public URLs for uploaded assets
 
@@ -50,7 +50,7 @@ Behavior:
 
 ### `POST /images/process`
 
-Accepts a source image and overlays a centered title/subtitle card plus branding. Required fields:
+Accepts a source image and overlays a food-blog-friendly editorial title card. Required fields:
 
 - `file`
 - `title`
@@ -58,6 +58,10 @@ Accepts a source image and overlays a centered title/subtitle card plus branding
 Optional fields:
 
 - `subtitle`
+- `position`: `top`, `center`, or `bottom`
+- `theme`: `warm_light`, `sage`, or `mocha`
+- `title_align`: `center` or `left`
+- `brand`: custom bottom-right branding text. Pass an empty string to omit it.
 
 Example:
 
@@ -65,11 +69,21 @@ Example:
 curl -X POST "https://img_handler.com/images/process" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -F "file=@/path/to/image.png" \
-  -F "title=Nomad Mouse" \
-  -F "subtitle=Travel gear"
+  -F "title=Brown Butter Banana Bread" \
+  -F "subtitle=Soft, moist, and easy to make" \
+  -F "position=top" \
+  -F "theme=warm_light" \
+  -F "title_align=center" \
+  -F "brand=example.com"
 ```
 
 The processed image is stored as JPEG and returns the same response shape as `/images/upload`.
+
+Recommended defaults for bright vertical food photos with white marble backgrounds:
+
+- `position=top`
+- `theme=warm_light`
+- `title_align=center`
 
 ### `GET /images/{filename}`
 
@@ -150,6 +164,7 @@ sudo ./system/setup.sh
 - `client_max_body_size` in Nginx is set to `15m`
 - the app enforces its own `10 MB` payload cap
 - signed public URLs are intended for temporary sharing, not permanent public hosting
+- `position=top` is the default for bright recipe images with usable top negative space
 
 ## Troubleshooting
 

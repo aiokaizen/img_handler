@@ -30,6 +30,10 @@ async def upload_and_process_image(
     file: UploadFile = File(...),
     title: str = Form(...),
     subtitle: str = Form(""),
+    position: str = Form("top"),
+    theme: str = Form("warm_light"),
+    title_align: str = Form("center"),
+    brand: str = Form("nomadmouse.com"),
     _: None = Depends(require_token),
 ):
     if not file.filename:
@@ -38,4 +42,13 @@ async def upload_and_process_image(
     if not file.content_type or file.content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail="Unsupported media type")
 
-    return await process_image(request, file, title, subtitle)
+    return await process_image(
+        request,
+        file,
+        title,
+        subtitle,
+        position=position,
+        theme=theme,
+        title_align=title_align,
+        brand=brand,
+    )
