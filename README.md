@@ -81,13 +81,16 @@ curl -X POST "http://127.0.0.1:8764/images/process" \
 
 ### `POST /videos/recipe`
 
-Creates a recipe video from a single image.
+Creates a recipe video job from a single image.
 
 Default format:
 
 - first 10 seconds: title + subtitle with zoom in
 - next 50 seconds: ingredients with zoom out
 - total duration: 60 seconds
+
+This endpoint is asynchronous. It returns `202 Accepted` immediately with a `job_id` and `status_url`.
+The client can either poll the job status or provide a webhook callback URL.
 
 Required fields:
 
@@ -106,6 +109,8 @@ Optional fields:
 - `transition_duration`
 - `fps`
 - `zoom_peak`
+- `callback_url`: optional `http` or `https` endpoint that will receive completion events
+- `callback_bearer_token`: optional static bearer token sent to the callback endpoint
 
 Example:
 
@@ -126,6 +131,8 @@ curl -X POST "http://127.0.0.1:8764/videos/recipe" \
   -F "ingredients_duration=50" \
   -F "transition=fade" \
   -F "transition_duration=1.0" \
+  -F "callback_url=https://example.com/hooks/img-handler" \
+  -F "callback_bearer_token=callback-secret-token" \
   -F "brand="
 ```
 
@@ -133,13 +140,98 @@ Response:
 
 ```json
 {
-  "stored_filename": "chicken-katsu_recipe.mp4",
-  "video_url": "http://127.0.0.1:8764/videos/chicken-katsu_recipe.mp4",
-  "public_url": "http://127.0.0.1:8764/videos/public/chicken-katsu_recipe.mp4?md5=...&expires=...",
-  "public_url_expiry": "27/03/2026 18:30",
-  "transition": "fade"
+  "job_id": "e7e747b1f59745f8b2140f5b4f598de4",
+  "status": "queued",
+  "created_at": "2026-03-27T14:15:11.273968+00:00",
+  "updated_at": "2026-03-27T14:15:11.273968+00:00",
+  "status_url": "http://127.0.0.1:8764/videos/recipe/jobs/e7e747b1f59745f8b2140f5b4f598de4",
+  "result": null,
+  "error": null,
+  "callback": {
+    "url": "https://example.com/hooks/img-handler",
+    "status": "pending",
+    "attempts": 0,
+    "last_attempt_at": null,
+    "next_attempt_at": null,
+    "last_status_code": null,
+    "last_error": null,
+    "delivered_at": null
+  }
 }
 ```
+
+### `GET /videos/recipe/jobs/{job_id}`
+
+Fetches the current state of a recipe video job.
+
+Statuses:
+
+- `queued`
+- `processing`
+- `completed`
+- `failed`
+
+Example response after completion:
+
+```json
+{
+  "job_id": "e7e747b1f59745f8b2140f5b4f598de4",
+  "status": "completed",
+  "created_at": "2026-03-27T14:15:11.273968+00:00",
+  "updated_at": "2026-03-27T14:16:05.441829+00:00",
+  "status_url": "http://127.0.0.1:8764/videos/recipe/jobs/e7e747b1f59745f8b2140f5b4f598de4",
+  "result": {
+    "stored_filename": "chicken-katsu_recipe.mp4",
+    "video_url": "http://127.0.0.1:8764/videos/chicken-katsu_recipe.mp4",
+    "public_url": "http://127.0.0.1:8764/videos/public/chicken-katsu_recipe.mp4?md5=...&expires=...",
+    "public_url_expiry": "27/03/2026 18:30",
+    "transition": "fade"
+  },
+  "error": null,
+  "callback": {
+    "url": "https://example.com/hooks/img-handler",
+    "status": "delivered",
+    "attempts": 1,
+    "last_attempt_at": "2026-03-27T14:16:05.664391+00:00",
+    "next_attempt_at": null,
+    "last_status_code": 200,
+    "last_error": null,
+    "delivered_at": "2026-03-27T14:16:05.664391+00:00"
+  }
+}
+```
+
+### Recipe video webhook payload
+
+When `callback_url` is provided, the service sends an authenticated `POST` with `Content-Type: application/json`.
+If `callback_bearer_token` is set, the request includes:
+
+```http
+Authorization: Bearer <callback_bearer_token>
+```
+
+The webhook body looks like this:
+
+```json
+{
+  "event": "video.recipe.completed",
+  "job_id": "e7e747b1f59745f8b2140f5b4f598de4",
+  "status": "completed",
+  "created_at": "2026-03-27T14:15:11.273968+00:00",
+  "updated_at": "2026-03-27T14:16:05.441829+00:00",
+  "status_url": "http://127.0.0.1:8764/videos/recipe/jobs/e7e747b1f59745f8b2140f5b4f598de4",
+  "result": {
+    "stored_filename": "chicken-katsu_recipe.mp4",
+    "video_url": "http://127.0.0.1:8764/videos/chicken-katsu_recipe.mp4",
+    "public_url": "http://127.0.0.1:8764/videos/public/chicken-katsu_recipe.mp4?md5=...&expires=...",
+    "public_url_expiry": "27/03/2026 18:30",
+    "transition": "fade"
+  },
+  "error": null
+}
+```
+
+If callback delivery fails, the service retries with backoff and keeps the retry state on the job record.
 
 ### `GET /images/{filename}`
 

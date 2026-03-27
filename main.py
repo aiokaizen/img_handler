@@ -1,12 +1,28 @@
-from fastapi import Depends, FastAPI, Form, UploadFile, File, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, UploadFile, File, HTTPException, Request, status
 from config.settings import ALLOWED_MIME, UPLOAD_DIR
 from api_functions.auth import require_token
 from api_functions.images import process_image, upload_single_image, get_single_image
-from api_functions.videos import create_recipe_video, get_single_video
+from api_functions.video_jobs import (
+    create_recipe_video_job,
+    get_recipe_video_job,
+    start_video_job_scheduler,
+    stop_video_job_scheduler,
+)
+from api_functions.videos import get_single_video
 
 app = FastAPI()
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.on_event("startup")
+def startup_event():
+    start_video_job_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    stop_video_job_scheduler()
 
 
 @app.post("/images/upload")
@@ -55,7 +71,7 @@ async def upload_and_process_image(
     )
 
 
-@app.post("/videos/recipe")
+@app.post("/videos/recipe", status_code=status.HTTP_202_ACCEPTED)
 async def create_recipe_video_endpoint(
     request: Request,
     file: UploadFile = File(...),
@@ -70,6 +86,8 @@ async def create_recipe_video_endpoint(
     transition_duration: float = Form(1.0),
     fps: int = Form(30),
     zoom_peak: float = Form(1.08),
+    callback_url: str = Form(""),
+    callback_bearer_token: str = Form(""),
     _: None = Depends(require_token),
 ):
     if not file.filename:
@@ -78,7 +96,7 @@ async def create_recipe_video_endpoint(
     if not file.content_type or file.content_type not in ALLOWED_MIME:
         raise HTTPException(status_code=415, detail="Unsupported media type")
 
-    return await create_recipe_video(
+    job = await create_recipe_video_job(
         request,
         file,
         title=title,
@@ -92,7 +110,15 @@ async def create_recipe_video_endpoint(
         transition_duration=transition_duration,
         fps=fps,
         zoom_peak=zoom_peak,
+        callback_url=callback_url,
+        callback_bearer_token=callback_bearer_token,
     )
+    return job
+
+
+@app.get("/videos/recipe/jobs/{job_id}", name="get_recipe_video_job")
+def get_recipe_video_job_endpoint(job_id: str, _: None = Depends(require_token)):
+    return get_recipe_video_job(job_id)
 
 
 @app.get("/videos/{filename}", name="get_video")

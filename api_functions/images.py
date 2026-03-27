@@ -5,6 +5,7 @@ from pathlib import Path, PurePath
 from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlsplit
 from slugify import slugify
 from PIL import Image, UnidentifiedImageError
 from api_functions.img_processing import (
@@ -87,6 +88,20 @@ def make_public_url(
     public_prefix: str = "/images/public",
     ttl_seconds: int = PUBLIC_URL_TTL_SECONDS,
 ) -> str:
+    return make_public_url_from_base(
+        str(request.base_url),
+        stored_filename,
+        public_prefix=public_prefix,
+        ttl_seconds=ttl_seconds,
+    )
+
+
+def make_public_url_from_base(
+    base_url: str,
+    stored_filename: str,
+    public_prefix: str = "/images/public",
+    ttl_seconds: int = PUBLIC_URL_TTL_SECONDS,
+) -> str:
     if not PUBLIC_LINK_SECRET:
         raise HTTPException(status_code=500, detail="PUBLIC_LINK_SECRET is not configured")
 
@@ -99,8 +114,14 @@ def make_public_url(
 
     sig = base64.urlsafe_b64encode(hashlib.md5(raw).digest()).decode("ascii").rstrip("=")
 
-    # request.base_url includes scheme/host from nginx proxy headers
-    return f"{str(request.base_url).rstrip('/')}{uri}?md5={sig}&expires={expires}"
+    base = base_url.rstrip("/")
+    return f"{base}{uri}?md5={sig}&expires={expires}"
+
+
+def build_absolute_url(base_url: str, path: str) -> str:
+    parsed = urlsplit(base_url)
+    root = f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    return f"{root}/{path.lstrip('/')}"
 
 
 async def read_and_validate_image_upload(file: UploadFile) -> tuple[bytes, str]:
