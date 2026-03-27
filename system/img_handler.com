@@ -47,4 +47,19 @@ server {
         add_header X-Content-Type-Options nosniff always;
     }
 
+    location /videos/public/ {
+        alias /var/lib/img_handler/uploads/;
+
+        secure_link $arg_md5,$arg_expires;
+        secure_link_md5 "$secure_link_expires$uri __PUBLIC_LINK_SECRET__";
+
+        if ($secure_link = "") { return 403; }
+        if ($secure_link = "0") { return 410; }
+
+        try_files $request_filename =404;
+
+        add_header Cache-Control "private, max-age=300";
+        add_header X-Content-Type-Options nosniff always;
+    }
+
 }

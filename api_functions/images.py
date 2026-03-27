@@ -81,12 +81,17 @@ def add_timestamp_if_exists(path: Path) -> Path:
     return candidate
 
 
-def make_public_url(request, stored_filename: str, ttl_seconds: int = PUBLIC_URL_TTL_SECONDS) -> str:
+def make_public_url(
+    request,
+    stored_filename: str,
+    public_prefix: str = "/images/public",
+    ttl_seconds: int = PUBLIC_URL_TTL_SECONDS,
+) -> str:
     if not PUBLIC_LINK_SECRET:
         raise HTTPException(status_code=500, detail="PUBLIC_LINK_SECRET is not configured")
 
     expires = int(time.time()) + ttl_seconds
-    uri = f"/images/public/{stored_filename}"
+    uri = f"{public_prefix.rstrip('/')}/{stored_filename}"
 
     # MUST match nginx secure_link_md5 string exactly:
     # "$secure_link_expires$uri <secret>"
@@ -139,7 +144,7 @@ async def upload_single_image(request: Request, file: UploadFile):
     image_url = request.url_for("get_image", filename=stored_filename)
 
     ttl_seconds = PUBLIC_URL_TTL_SECONDS
-    public_url = make_public_url(request, stored_filename, ttl_seconds)
+    public_url = make_public_url(request, stored_filename, ttl_seconds=ttl_seconds)
     expiry_timestamp = int(time.time()) + ttl_seconds
     expiry = datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc).strftime("%d/%m/%Y %H:%M")
 
@@ -214,7 +219,7 @@ async def process_image(
     image_url = request.url_for("get_image", filename=stored_filename)
 
     ttl_seconds = PUBLIC_URL_TTL_SECONDS
-    public_url = make_public_url(request, stored_filename, ttl_seconds)
+    public_url = make_public_url(request, stored_filename, ttl_seconds=ttl_seconds)
     expiry_timestamp = int(time.time()) + ttl_seconds
     expiry = datetime.fromtimestamp(expiry_timestamp, tz=timezone.utc).strftime("%d/%m/%Y %H:%M")
 

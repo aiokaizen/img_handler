@@ -1,59 +1,63 @@
 # img_handler
 
-`img_handler` is a small FastAPI service that provides:
+`img_handler` is a small FastAPI service for food-blog media generation. It currently supports:
 
 - authenticated image upload
-- authenticated image retrieval
-- authenticated image processing with a food-blog editorial title card
-- filesystem-backed storage
-- temporary signed public URLs for uploaded assets
+- authenticated image processing with an editorial title card
+- authenticated recipe video generation from a single image
+- authenticated image and video retrieval
+- temporary signed public URLs for uploaded media
 
 It is designed to run behind Nginx and be managed by systemd. In the provided production configuration, Uvicorn listens on `127.0.0.1:8764` and Nginx proxies requests from `img_handler.com`.
 
-## API
+## Authentication
 
-All application endpoints require:
+Every app endpoint uses a simple static Bearer token.
+
+Header format:
 
 ```http
 Authorization: Bearer <AUTH_TOKEN>
 ```
 
+In local development you can set:
+
+```bash
+export AUTH_TOKEN="dev-token-change-me"
+```
+
+In production the token is typically stored in:
+
+```text
+/etc/img_handler/img_handler.env
+```
+
+## API
+
 ### `POST /images/upload`
 
 Uploads an image from `multipart/form-data` using the `file` field.
 
-Example:
-
 ```bash
-curl -X POST "https://img_handler.com/images/upload" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  -F "file=@/path/to/image.png"
+curl -X POST "http://127.0.0.1:8764/images/upload" \
+  -H "Authorization: Bearer dev-token-change-me" \
+  -F "file=@/absolute/path/to/image.jpg"
 ```
 
-Successful response:
+Response:
 
 ```json
 {
-  "stored_filename": "my-image.png",
-  "image_url": "https://img_handler.com/images/my-image.png",
-  "public_url": "https://img_handler.com/images/public/my-image.png?md5=...&expires=...",
-  "public_url_expiry": "11/03/2026 18:30"
+  "stored_filename": "my-image.jpg",
+  "image_url": "http://127.0.0.1:8764/images/my-image.jpg",
+  "public_url": "http://127.0.0.1:8764/images/public/my-image.jpg?md5=...&expires=...",
+  "public_url_expiry": "27/03/2026 18:30"
 }
 ```
 
-Behavior:
-
-- filenames are slugified before storage
-- if a target filename already exists, a UTC timestamp is appended
-- uploads are limited to `10 MB`
-- only JPEG, PNG, WebP, and GIF are accepted
-
 ### `POST /images/process`
 
-Accepts a source image and overlays a food-blog-friendly editorial title card. Required fields:
-
-- `file`
-- `title`
+Creates a processed food image with the editorial title card.
 
 Optional fields:
 
@@ -61,14 +65,12 @@ Optional fields:
 - `position`: `top`, `center`, or `bottom`
 - `theme`: `warm_light`, `sage`, or `mocha`
 - `title_align`: `center` or `left`
-- `brand`: custom bottom-right branding text. Pass an empty string to omit it.
-
-Example:
+- `brand`: custom branding text. Pass an empty string to omit it.
 
 ```bash
-curl -X POST "https://img_handler.com/images/process" \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  -F "file=@/path/to/image.png" \
+curl -X POST "http://127.0.0.1:8764/images/process" \
+  -H "Authorization: Bearer dev-token-change-me" \
+  -F "file=@/absolute/path/to/image.jpg" \
   -F "title=Brown Butter Banana Bread" \
   -F "subtitle=Soft, moist, and easy to make" \
   -F "position=top" \
@@ -77,39 +79,105 @@ curl -X POST "https://img_handler.com/images/process" \
   -F "brand=example.com"
 ```
 
-The processed image is stored as JPEG and returns the same response shape as `/images/upload`.
+### `POST /videos/recipe`
 
-Recommended defaults for bright vertical food photos with white marble backgrounds:
+Creates a recipe video from a single image.
 
-- `position=top`
-- `theme=warm_light`
-- `title_align=center`
+Default format:
+
+- first 10 seconds: title + subtitle with zoom in
+- next 50 seconds: ingredients with zoom out
+- total duration: 60 seconds
+
+Required fields:
+
+- `file`
+- `title`
+- at least one `ingredient`
+
+Optional fields:
+
+- `subtitle`
+- `ingredients_title`
+- `brand`
+- `title_duration`
+- `ingredients_duration`
+- `transition`: `fade`, `slide_up`, `wipe_left`, `zoom_cross`, `blur_fade`
+- `transition_duration`
+- `fps`
+- `zoom_peak`
+
+Example:
+
+```bash
+curl -X POST "http://127.0.0.1:8764/videos/recipe" \
+  -H "Authorization: Bearer dev-token-change-me" \
+  -F "file=@/absolute/path/to/chicken_katsu.jpg" \
+  -F "title=Chicken Katsu" \
+  -F "subtitle=Crispy cutlet with cabbage and sauce" \
+  -F "ingredient=4 chicken cutlets" \
+  -F "ingredient=1 cup panko breadcrumbs" \
+  -F "ingredient=2 eggs" \
+  -F "ingredient=1/2 cup flour" \
+  -F "ingredient=Oil for frying" \
+  -F "ingredient=Tonkatsu sauce" \
+  -F "ingredients_title=Ingredients" \
+  -F "title_duration=10" \
+  -F "ingredients_duration=50" \
+  -F "transition=fade" \
+  -F "transition_duration=1.0" \
+  -F "brand="
+```
+
+Response:
+
+```json
+{
+  "stored_filename": "chicken-katsu_recipe.mp4",
+  "video_url": "http://127.0.0.1:8764/videos/chicken-katsu_recipe.mp4",
+  "public_url": "http://127.0.0.1:8764/videos/public/chicken-katsu_recipe.mp4?md5=...&expires=...",
+  "public_url_expiry": "27/03/2026 18:30",
+  "transition": "fade"
+}
+```
 
 ### `GET /images/{filename}`
 
 Fetches a stored image through the authenticated app route.
 
-Example:
+```bash
+curl -L \
+  -H "Authorization: Bearer dev-token-change-me" \
+  "http://127.0.0.1:8764/images/my-image.jpg" \
+  --output downloaded.jpg
+```
+
+### `GET /videos/{filename}`
+
+Fetches a stored video through the authenticated app route.
 
 ```bash
 curl -L \
-  -H "Authorization: Bearer $AUTH_TOKEN" \
-  "https://img_handler.com/images/my-image.png" \
-  --output downloaded.png
+  -H "Authorization: Bearer dev-token-change-me" \
+  "http://127.0.0.1:8764/videos/chicken-katsu_recipe.mp4" \
+  --output recipe-video.mp4
 ```
 
-### `GET /images/public/{filename}`
+### Public media URLs
 
-This route is served directly by Nginx and does not use Bearer auth. Access is controlled by the signed `md5` and `expires` query parameters returned by the app.
+These are served by Nginx and do not use Bearer auth:
 
-## Configuration
+- `GET /images/public/{filename}`
+- `GET /videos/public/{filename}`
 
-Environment variables:
+They are controlled by signed `md5` and `expires` query parameters returned by the app.
 
-- `AUTH_TOKEN` (required): static Bearer token used by the FastAPI app
-- `PUBLIC_LINK_SECRET` (required for signed public URLs): shared secret used by both FastAPI and Nginx
-- `UPLOAD_DIR` (optional): directory where images are stored. Defaults to `/var/lib/img_handler/uploads`
-- `PUBLIC_URL_TTL_SECONDS` (optional): signed public URL lifetime. Defaults to `864000` seconds (10 days)
+## Validation and limits
+
+- uploads are limited to `10 MB`
+- only JPEG, PNG, WebP, and GIF are accepted as source images
+- filenames are slugified before storage
+- if a target filename already exists, a UTC timestamp is appended
 
 ## Local development
 
@@ -126,15 +194,11 @@ Run:
 ```bash
 export AUTH_TOKEN="dev-token-change-me"
 export PUBLIC_LINK_SECRET="dev-public-link-secret"
+export UPLOAD_DIR="/tmp/img_handler_uploads"
+
+mkdir -p "$UPLOAD_DIR"
+
 uvicorn main:app --reload --host 127.0.0.1 --port 8764
-```
-
-Test upload:
-
-```bash
-curl -X POST "http://127.0.0.1:8764/images/upload" \
-  -H "Authorization: Bearer dev-token-change-me" \
-  -F "file=@/path/to/image.png"
 ```
 
 ## Production deployment
@@ -164,7 +228,7 @@ sudo ./system/setup.sh
 - `client_max_body_size` in Nginx is set to `15m`
 - the app enforces its own `10 MB` payload cap
 - signed public URLs are intended for temporary sharing, not permanent public hosting
-- `position=top` is the default for bright recipe images with usable top negative space
+- `position=top` is the default image title-card placement for bright recipe images with usable top negative space
 
 ## Troubleshooting
 
