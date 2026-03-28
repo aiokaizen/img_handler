@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,7 @@ from scripts.generate_recipe_tiktok_video import VALID_TRANSITIONS, generate_rec
 
 
 VIDEO_JOBS_DIR.mkdir(parents=True, exist_ok=True)
+logger = logging.getLogger("uvicorn.error").getChild("img_handler.video_jobs")
 
 GENERATION_EXECUTOR: ThreadPoolExecutor | None = None
 CALLBACK_EXECUTOR: ThreadPoolExecutor | None = None
@@ -68,6 +70,13 @@ def parse_iso(value: str | None) -> datetime | None:
 
 def compute_retry_delay_seconds(attempt: int) -> int:
     return min(300, 5 * (2 ** max(0, attempt - 1)))
+
+
+def job_age_seconds(job: dict[str, Any]) -> float:
+    created_at = parse_iso(job.get("created_at"))
+    if created_at is None:
+        return 0.0
+    return max(0.0, (datetime.now(timezone.utc) - created_at).total_seconds())
 
 
 def job_dir(job_id: str) -> Path:
@@ -280,6 +289,7 @@ def start_video_job_scheduler() -> None:
         )
         SCHEDULER_THREAD.start()
         SCHEDULER_STARTED = True
+        logger.info("Started video job scheduler with jobs_dir=%s", VIDEO_JOBS_DIR)
 
 
 def stop_video_job_scheduler() -> None:
@@ -303,6 +313,7 @@ def stop_video_job_scheduler() -> None:
         ACTIVE_CALLBACK_IDS.clear()
 
     SCHEDULER_STARTED = False
+    logger.info("Stopped video job scheduler")
 
 
 def build_video_result(base_url: str, stored_filename: str) -> dict[str, str]:
@@ -327,6 +338,13 @@ def process_recipe_video_job(job_id: str) -> None:
     job_snapshot = load_job(job_id)
     if job_snapshot.get("status") not in {"queued", "processing"}:
         return
+
+    logger.info(
+        "Starting recipe video job job_id=%s callback_url=%s queued_for_seconds=%.2f",
+        job_id,
+        (job_snapshot.get("callback") or {}).get("url") or "-",
+        job_age_seconds(job_snapshot),
+    )
 
     mutate_job(
         job_id,
@@ -368,7 +386,7 @@ def process_recipe_video_job(job_id: str) -> None:
         result = build_video_result(job["base_url"], target_path.name)
         result["transition"] = params["transition"]
 
-        mutate_job(
+        completed_job = mutate_job(
             job_id,
             lambda current: (
                 current.__setitem__("status", "completed"),
@@ -380,11 +398,18 @@ def process_recipe_video_job(job_id: str) -> None:
                 ),
             ),
         )
+        logger.info(
+            "Completed recipe video job job_id=%s stored_filename=%s total_seconds=%.2f callback_url=%s",
+            job_id,
+            target_path.name,
+            job_age_seconds(completed_job),
+            (completed_job.get("callback") or {}).get("url") or "-",
+        )
     except Exception as exc:
         if target_path and target_path.exists():
             target_path.unlink(missing_ok=True)
 
-        mutate_job(
+        failed_job = mutate_job(
             job_id,
             lambda current: (
                 current.__setitem__("status", "failed"),
@@ -395,6 +420,13 @@ def process_recipe_video_job(job_id: str) -> None:
                     now_utc_iso() if current["callback"].get("url") else None,
                 ),
             ),
+        )
+        logger.exception(
+            "Recipe video job failed job_id=%s total_seconds=%.2f callback_url=%s error=%s",
+            job_id,
+            job_age_seconds(failed_job),
+            (failed_job.get("callback") or {}).get("url") or "-",
+            exc,
         )
     finally:
         latest = load_job(job_id)
@@ -408,6 +440,14 @@ def deliver_job_callback(job_id: str) -> None:
         return
 
     callback = job["callback"]
+    attempt_number = callback.get("attempts", 0) + 1
+    logger.info(
+        "Firing webhook callback job_id=%s attempt=%s callback_url=%s total_seconds=%.2f",
+        job_id,
+        attempt_number,
+        callback["url"],
+        job_age_seconds(job),
+    )
     payload = build_callback_payload(job)
     headers = {
         "Content-Type": "application/json",
@@ -438,7 +478,7 @@ def deliver_job_callback(job_id: str) -> None:
 
     attempt_time = now_utc_iso()
     if status_code is not None and 200 <= status_code < 300:
-        mutate_job(
+        delivered_job = mutate_job(
             job_id,
             lambda current: (
                 current["callback"].__setitem__("status", "delivered"),
@@ -449,6 +489,14 @@ def deliver_job_callback(job_id: str) -> None:
                 current["callback"].__setitem__("next_attempt_at", None),
                 current["callback"].__setitem__("delivered_at", attempt_time),
             ),
+        )
+        logger.info(
+            "Delivered webhook callback job_id=%s attempt=%s callback_url=%s status_code=%s total_seconds=%.2f",
+            job_id,
+            attempt_number,
+            callback["url"],
+            status_code,
+            job_age_seconds(delivered_job),
         )
         return
 
@@ -470,7 +518,19 @@ def deliver_job_callback(job_id: str) -> None:
         callback_data["status"] = "retry_scheduled"
         callback_data["next_attempt_at"] = retry_at.isoformat()
 
-    mutate_job(job_id, mark_retry)
+    retried_job = mutate_job(job_id, mark_retry)
+    retry_callback = retried_job["callback"]
+    log_method = logger.warning if retry_callback.get("status") == "failed" else logger.info
+    log_method(
+        "Webhook callback attempt failed job_id=%s attempt=%s callback_url=%s last_status_code=%s last_error=%s next_attempt_at=%s total_seconds=%.2f",
+        job_id,
+        attempt_number,
+        callback["url"],
+        retry_callback.get("last_status_code"),
+        retry_callback.get("last_error"),
+        retry_callback.get("next_attempt_at"),
+        job_age_seconds(retried_job),
+    )
 
 
 async def create_recipe_video_job(
@@ -571,6 +631,13 @@ async def create_recipe_video_job(
         "callback": callback_state,
     }
     write_job_file(job_path(job_id), payload)
+    logger.info(
+        "Queued recipe video job job_id=%s title=%r callback_url=%s ingredients=%s",
+        job_id,
+        title,
+        cleaned_callback_url or "-",
+        len(clean_ingredients),
+    )
     schedule_generation(job_id)
     return sanitize_job(payload)
 
