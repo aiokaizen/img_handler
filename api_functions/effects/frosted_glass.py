@@ -9,8 +9,12 @@ from api_functions.effects.layout import (
     resolve_output_size,
 )
 from api_functions.img_processing import (
+    DEFAULT_BRAND_VARIANT,
     DEFAULT_SUBTITLE_FONT,
+    DEFAULT_SUBTITLE_ITALIC_FONT,
+    DEFAULT_SUBTITLE_VARIANT,
     DEFAULT_TITLE_FONT,
+    DEFAULT_TITLE_VARIANT,
     load_font,
     measure_text_block,
     wrap_text,
@@ -31,11 +35,13 @@ def _fit_band_text(
     title_size = start_title_size
     subtitle_size = start_subtitle_size
     min_title = 42
-    min_subtitle = 32
+    min_subtitle = 34
 
     for _ in range(30):
-        title_font = load_font(DEFAULT_TITLE_FONT, title_size)
-        subtitle_font = load_font(DEFAULT_SUBTITLE_FONT, subtitle_size)
+        title_font = load_font(DEFAULT_TITLE_FONT, title_size, variant=DEFAULT_TITLE_VARIANT)
+        subtitle_font = load_font(
+            DEFAULT_SUBTITLE_ITALIC_FONT, subtitle_size, variant="ExtraBold Italic",
+        )
 
         title_lines = wrap_text(measure, title, title_font, max_text_width)
         subtitle_lines = (
@@ -45,7 +51,7 @@ def _fit_band_text(
 
         title_spacing = max(4, title_size // 8)
         subtitle_spacing = max(3, subtitle_size // 8)
-        rule_gap = max(14, title_size // 4) if subtitle_lines else 0
+        rule_gap = max(54, title_size // 2) if subtitle_lines else 0
 
         _, title_h, title_lh = measure_text_block(measure, title_lines, title_font, title_spacing)
         _, subtitle_h, subtitle_lh = measure_text_block(
@@ -148,7 +154,7 @@ def render(
         max_text_width=band_w - 2 * band_pad_x,
         max_text_height=band_max_h - 2 * band_pad_y,
         start_title_size=max(72, int(canvas_w * 0.12)),
-        start_subtitle_size=max(40, int(canvas_w * 0.044)),
+        start_subtitle_size=max(44, int(canvas_w * 0.05)),
     )
 
     band_h = min(band_max_h, fitted["total_height"] + 2 * band_pad_y)
@@ -177,25 +183,13 @@ def render(
     )
     band_rgba = Image.alpha_composite(band_rgba, outline_layer)
 
-    # Soft drop shadow under the band so it feels like it sits above the photos.
-    shadow_canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-    shadow_draw = ImageDraw.Draw(shadow_canvas)
-    shadow_draw.rounded_rectangle(
-        (band_x, band_y + 10, band_x + band_w, band_y + band_h + 10),
-        radius=band_radius,
-        fill=(0, 0, 0, 70),
-    )
-    shadow_blurred = shadow_canvas.filter(ImageFilter.GaussianBlur(radius=max(12, canvas_w // 80)))
-
     composed = canvas.convert("RGBA")
-    composed = Image.alpha_composite(composed, shadow_blurred)
     composed.alpha_composite(band_rgba, (band_x, band_y))
 
     # --- Text ----------------------------------------------------------------
     draw = ImageDraw.Draw(composed)
     center_x = band_x + band_w // 2
-    content_y = band_y + (band_h - fitted["total_height"]) // 2
-    title_shadow = (0, 0, 0, 60)
+    content_y = band_y + (band_h - fitted["total_height"]) // 2 - 40
 
     y = content_y
     for line in fitted["title_lines"]:
@@ -205,7 +199,6 @@ def render(
             center_x=center_x,
             y=y,
             fill=(*palette["secondary"], 255),
-            shadow_fill=title_shadow,
         )
         y += fitted["title_line_height"] + fitted["title_spacing"]
 
@@ -214,7 +207,7 @@ def render(
         # Uses secondary (text color) at low alpha so it stays visible on a
         # primary-tinted band — a primary-colored rule disappears into its
         # own background.
-        rule_y = y - fitted["title_spacing"] + fitted["rule_gap"] // 2
+        rule_y = y - fitted["title_spacing"] + fitted["rule_gap"] * 3 // 5
         rule_margin = max(40, int(band_w * 0.22))
         draw.line(
             (band_x + rule_margin, rule_y, band_x + band_w - rule_margin, rule_y),
@@ -235,14 +228,13 @@ def render(
     # --- Brand stamp (bottom right, outside the band) ------------------------
     if brand:
         brand_size = max(18, canvas_w // 55)
-        brand_font = load_font(DEFAULT_SUBTITLE_FONT, brand_size)
+        brand_font = load_font(DEFAULT_SUBTITLE_FONT, brand_size, variant=DEFAULT_BRAND_VARIANT)
         bbox = draw.textbbox((0, 0), brand, font=brand_font)
         brand_w = bbox[2] - bbox[0]
         brand_h = bbox[3] - bbox[1]
         margin = max(20, canvas_w // 40)
         bx = canvas_w - margin - brand_w
         by = canvas_h - margin - brand_h
-        draw.text((bx + 1, by + 1), brand, font=brand_font, fill=(0, 0, 0, 120))
         draw.text((bx, by), brand, font=brand_font, fill=(255, 255, 255, 230))
 
     return composed.convert("RGB")

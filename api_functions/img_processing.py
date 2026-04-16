@@ -1,7 +1,20 @@
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
-DEFAULT_TITLE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
-DEFAULT_SUBTITLE_FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONT_DIR = Path(__file__).resolve().parent.parent / "fonts"
+
+# Bundled Google Fonts (OFL) — variable TTFs expose named weight instances
+# (Regular, Medium, SemiBold, Bold, …) via ImageFont.set_variation_by_name.
+DEFAULT_TITLE_FONT = str(FONT_DIR / "PlayfairDisplay-VF.ttf")
+DEFAULT_SUBTITLE_FONT = str(FONT_DIR / "Montserrat-VF.ttf")
+DEFAULT_SUBTITLE_ITALIC_FONT = str(FONT_DIR / "Montserrat-Italic-VF.ttf")
+DEFAULT_SCRIPT_FONT = str(FONT_DIR / "GreatVibes-Regular.ttf")
+DEFAULT_CONDENSED_FONT = str(FONT_DIR / "BebasNeue-Regular.ttf")
+
+DEFAULT_TITLE_VARIANT = "Bold"
+DEFAULT_SUBTITLE_VARIANT = "Medium"
+DEFAULT_BRAND_VARIANT = "Medium"
 
 VALID_POSITIONS = {"top", "center", "bottom"}
 VALID_THEMES = {"warm_light", "sage", "mocha"}
@@ -41,11 +54,18 @@ THEMES = {
 }
 
 
-def load_font(path: str, size: int) -> ImageFont.ImageFont:
+def load_font(path: str, size: int, variant: str | None = None) -> ImageFont.ImageFont:
     try:
-        return ImageFont.truetype(path, size)
+        font = ImageFont.truetype(path, size)
     except Exception:
         return ImageFont.load_default()
+    if variant:
+        # Variable fonts expose named weight instances; static fonts raise.
+        try:
+            font.set_variation_by_name(variant)
+        except (OSError, ValueError):
+            pass
+    return font
 
 
 def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> list[str]:
