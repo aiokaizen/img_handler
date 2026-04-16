@@ -46,4 +46,4 @@ def list_effects() -> list[Effect]:
 
 
 # Import effect modules so their @register_effect decorators run.
-from api_functions.effects import frosted_glass  # noqa: E402, F401
+from api_functions.effects import black_bar, frosted_glass  # noqa: E402, F401

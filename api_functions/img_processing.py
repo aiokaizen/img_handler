@@ -7,6 +7,7 @@ FONT_DIR = Path(__file__).resolve().parent.parent / "fonts"
 # Bundled Google Fonts (OFL) — variable TTFs expose named weight instances
 # (Regular, Medium, SemiBold, Bold, …) via ImageFont.set_variation_by_name.
 DEFAULT_TITLE_FONT = str(FONT_DIR / "PlayfairDisplay-VF.ttf")
+DEFAULT_TITLE_ITALIC_FONT = str(FONT_DIR / "PlayfairDisplay-Italic-VF.ttf")
 DEFAULT_SUBTITLE_FONT = str(FONT_DIR / "Montserrat-VF.ttf")
 DEFAULT_SUBTITLE_ITALIC_FONT = str(FONT_DIR / "Montserrat-Italic-VF.ttf")
 DEFAULT_SCRIPT_FONT = str(FONT_DIR / "GreatVibes-Regular.ttf")

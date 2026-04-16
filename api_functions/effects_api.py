@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import HTTPException, Request, UploadFile
 from PIL import Image, UnidentifiedImageError
 
+from api_functions.effects.black_bar import render as render_black_bar
 from api_functions.effects.frosted_glass import render as render_frosted_glass
 from api_functions.effects.layout import resolve_output_size
 from api_functions.images import (
@@ -101,5 +102,56 @@ async def apply_frosted_glass_triptych(
     top_stem = Path(slugified_filename(file_top.filename)).stem
     bottom_stem = Path(slugified_filename(file_bottom.filename)).stem
     out_name = f"{top_stem}__{bottom_stem}_frosted_{size.value}.jpeg"
+
+    return _save_and_respond(request, result, filename=out_name)
+
+
+async def apply_black_bar_triptych(
+    request: Request,
+    file_top: UploadFile,
+    file_bottom: UploadFile,
+    *,
+    title: str,
+    subtitle: str,
+    accent_text: str,
+    url_text: str,
+    brand: str,
+    band_fill_hex: str,
+    band_text_hex: str,
+    output_size: str,
+) -> dict:
+    top_data, _ = await read_and_validate_image_upload(file_top)
+    bottom_data, _ = await read_and_validate_image_upload(file_bottom)
+
+    try:
+        size = resolve_output_size(output_size)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    top_img = _load_image(top_data)
+    bottom_img = _load_image(bottom_data)
+
+    try:
+        result = render_black_bar(
+            image_top=top_img,
+            image_bottom=bottom_img,
+            title=title,
+            subtitle=subtitle,
+            accent_text=accent_text,
+            url_text=url_text,
+            brand=brand,
+            band_fill_hex=_empty_to_none(band_fill_hex),
+            band_text_hex=_empty_to_none(band_text_hex),
+            output_size=size,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        top_img.close()
+        bottom_img.close()
+
+    top_stem = Path(slugified_filename(file_top.filename)).stem
+    bottom_stem = Path(slugified_filename(file_bottom.filename)).stem
+    out_name = f"{top_stem}__{bottom_stem}_blackbar_{size.value}.jpeg"
 
     return _save_and_respond(request, result, filename=out_name)

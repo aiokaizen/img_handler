@@ -37,7 +37,7 @@ DejaVu Serif Bold (title) + DejaVu Sans (subtitle/brand). Not final — referenc
 
 ## Design catalog
 
-### 1. `frosted_glass_triptych` — in-progress (focus)
+### 1. `frosted_glass_triptych` — shipped
 
 References: Blood Orange Cake, Blueberry Lemon Yogurt Bark, Mulberry Cake, Vintage Christmas Cake, Raffaello Cake.
 
@@ -58,7 +58,7 @@ References: Blood Orange Cake, Blueberry Lemon Yogurt Bark, Mulberry Cake, Vinta
 
 **Params:** `file_top`, `file_bottom`, `title`, `subtitle?`, `brand?`, `primary_hex?`, `secondary_hex?`, `tertiary_hex?`, `output_size`.
 
-### 2. `black_bar_triptych` — planned
+### 2. `black_bar_triptych` — in-progress (focus)
 
 Reference: Lemon Blackberry Cake (Stephanie's Sweets).
 

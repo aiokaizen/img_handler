@@ -55,6 +55,8 @@ def main() -> int:
     parser.add_argument("--primary", default="", help="Optional primary hex, e.g. '#f4b5c2'. Auto-extracted if empty.")
     parser.add_argument("--secondary", default="", help="Optional secondary (title) hex.")
     parser.add_argument("--tertiary", default="", help="Optional tertiary (subtitle/brand) hex.")
+    parser.add_argument("--accent", default="", help="Optional script accent text (used by black_bar_triptych).")
+    parser.add_argument("--url", default="", help="Optional URL strip text (used by black_bar_triptych).")
     parser.add_argument(
         "--sizes", nargs="+", default=["pin_2x3", "pin_1x2"],
         help="Output sizes to render (space-separated).",
@@ -92,6 +94,12 @@ def main() -> int:
         "secondary_hex": args.secondary or None,
         "tertiary_hex": args.tertiary or None,
     }
+    per_effect_extras = {
+        "black_bar_triptych": {
+            "accent_text": args.accent,
+            "url_text": args.url,
+        },
+    }
 
     for run in range(args.count):
         top_path, bottom_path = rng.sample(images, 2)
@@ -100,6 +108,7 @@ def main() -> int:
             bot_src.load()
 
             for effect in effects:
+                extras = per_effect_extras.get(effect.name, {})
                 for size in args.sizes:
                     if effect.kind == "dual":
                         result = effect.render(
@@ -107,11 +116,13 @@ def main() -> int:
                             image_bottom=bot_src,
                             output_size=size,
                             **common_kwargs,
+                            **extras,
                         )
                     else:
                         result = effect.render(
                             image=top_src,
                             **common_kwargs,
+                            **extras,
                         )
 
                     out_name = (
