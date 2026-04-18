@@ -331,6 +331,29 @@ sudo ./system/setup.sh
 
 ### Signed public URLs return `403` or `410`
 
+- `403` usually means the signed URL is invalid or `PUBLIC_LINK_SECRET` differs between the app and Nginx
+- `410` means the URL expired and you need to generate a fresh one
+
+### Signed public URLs return `404`
+
+- first verify the authenticated route works:
+  - `GET /images/{filename}` for images
+  - `GET /videos/{filename}` for videos
+- if the authenticated route works but the signed public URL returns `404`, check filesystem permissions for Nginx
+- the production unit file sets `StateDirectoryMode=0755` so Nginx can traverse `/var/lib/img_handler` and read files from `/var/lib/img_handler/uploads`
+- after updating the service file, run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart img_handler
+```
+
+- if needed, verify the live directory modes:
+
+```bash
+namei -om /var/lib/img_handler/uploads
+```
+
 - verify `PUBLIC_LINK_SECRET` matches between `/etc/img_handler/img_handler.env` and the rendered Nginx config
 - `410` means the URL expired
 

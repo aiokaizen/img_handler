@@ -16,7 +16,7 @@ EnvironmentFile=/etc/img_handler/img_handler.env
 
 # Creates /var/lib/img_handler (and keeps ownership consistent)
 StateDirectory=img_handler
-StateDirectoryMode=0750
+StateDirectoryMode=0755
 
 # App env
 Environment="UPLOAD_DIR=/var/lib/img_handler/uploads"
