@@ -24,6 +24,7 @@ from pathlib import Path
 from PIL import Image
 
 from api_functions.effects import list_effects
+from api_functions.effects.title_panel import VALID_STYLES as TITLE_PANEL_STYLES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -57,6 +58,10 @@ def main() -> int:
     parser.add_argument("--tertiary", default="", help="Optional tertiary (subtitle/brand) hex.")
     parser.add_argument("--accent", default="", help="Optional script accent text (used by black_bar_triptych).")
     parser.add_argument("--url", default="", help="Optional URL strip text (used by black_bar_triptych).")
+    parser.add_argument(
+        "--styles", nargs="+", default=list(TITLE_PANEL_STYLES),
+        help="title_panel_triptych styles to render (default: all).",
+    )
     parser.add_argument(
         "--sizes", nargs="+", default=["pin_2x3", "pin_1x2"],
         help="Output sizes to render (space-separated).",
@@ -100,6 +105,11 @@ def main() -> int:
             "url_text": args.url,
         },
     }
+    # Effects with several layouts render once per variant; the variant's
+    # values are appended to the output filename.
+    per_effect_variants = {
+        "title_panel_triptych": [{"style": s} for s in args.styles],
+    }
 
     for run in range(args.count):
         top_path, bottom_path = rng.sample(images, 2)
@@ -109,29 +119,33 @@ def main() -> int:
 
             for effect in effects:
                 extras = per_effect_extras.get(effect.name, {})
-                for size in args.sizes:
-                    if effect.kind == "dual":
-                        result = effect.render(
-                            image_top=top_src,
-                            image_bottom=bot_src,
-                            output_size=size,
-                            **common_kwargs,
-                            **extras,
-                        )
-                    else:
-                        result = effect.render(
-                            image=top_src,
-                            **common_kwargs,
-                            **extras,
-                        )
+                for variant in per_effect_variants.get(effect.name, [{}]):
+                    variant_tag = "".join(f"_{v}" for v in variant.values())
+                    for size in args.sizes:
+                        if effect.kind == "dual":
+                            result = effect.render(
+                                image_top=top_src,
+                                image_bottom=bot_src,
+                                output_size=size,
+                                **common_kwargs,
+                                **extras,
+                                **variant,
+                            )
+                        else:
+                            result = effect.render(
+                                image=top_src,
+                                **common_kwargs,
+                                **extras,
+                                **variant,
+                            )
 
-                    out_name = (
-                        f"{effect.name}_{size}_"
-                        f"{top_path.stem[:24]}__{bottom_path.stem[:24]}_r{run}.jpg"
-                    )
-                    out_path = args.output / out_name
-                    result.save(out_path, format="JPEG", quality=92, optimize=True, progressive=True)
-                    print(f"wrote {out_path}")
+                        out_name = (
+                            f"{effect.name}{variant_tag}_{size}_"
+                            f"{top_path.stem[:24]}__{bottom_path.stem[:24]}_r{run}.jpg"
+                        )
+                        out_path = args.output / out_name
+                        result.save(out_path, format="JPEG", quality=92, optimize=True, progressive=True)
+                        print(f"wrote {out_path}")
 
     return 0
 

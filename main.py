@@ -1,7 +1,11 @@
 from fastapi import Depends, FastAPI, Form, UploadFile, File, HTTPException, Request, status
 from config.settings import ALLOWED_MIME, UPLOAD_DIR
 from api_functions.auth import require_token
-from api_functions.effects_api import apply_black_bar_triptych, apply_frosted_glass_triptych
+from api_functions.effects_api import (
+    apply_black_bar_triptych,
+    apply_frosted_glass_triptych,
+    apply_title_panel_triptych,
+)
 from api_functions.images import process_image, upload_single_image, get_single_image
 from api_functions.video_jobs import (
     create_recipe_video_job,
@@ -193,5 +197,37 @@ async def black_bar_triptych_endpoint(
         brand=brand,
         band_fill_hex=band_fill_hex,
         band_text_hex=band_text_hex,
+        output_size=output_size,
+    )
+
+
+@app.post("/images/effects/title_panel_triptych")
+async def title_panel_triptych_endpoint(
+    request: Request,
+    file_top: UploadFile = File(...),
+    file_bottom: UploadFile = File(...),
+    title: str = Form(...),
+    style: str = Form("ruled_band"),
+    subtitle: str = Form(""),
+    brand: str = Form(""),
+    accent_hex: str = Form(""),
+    output_size: str = Form("pin_1x2"),
+    _: None = Depends(require_token),
+):
+    for f in (file_top, file_bottom):
+        if not f.filename:
+            raise HTTPException(status_code=400, detail="Missing filename")
+        if not f.content_type or f.content_type not in ALLOWED_MIME:
+            raise HTTPException(status_code=415, detail="Unsupported media type")
+
+    return await apply_title_panel_triptych(
+        request,
+        file_top,
+        file_bottom,
+        style=style,
+        title=title,
+        subtitle=subtitle,
+        brand=brand,
+        accent_hex=accent_hex,
         output_size=output_size,
     )

@@ -12,6 +12,11 @@ DEFAULT_SUBTITLE_FONT = str(FONT_DIR / "Montserrat-VF.ttf")
 DEFAULT_SUBTITLE_ITALIC_FONT = str(FONT_DIR / "Montserrat-Italic-VF.ttf")
 DEFAULT_SCRIPT_FONT = str(FONT_DIR / "GreatVibes-Regular.ttf")
 DEFAULT_CONDENSED_FONT = str(FONT_DIR / "BebasNeue-Regular.ttf")
+SERIF_DISPLAY_FONT = str(FONT_DIR / "Fraunces-VF.ttf")
+GEOMETRIC_BOLD_FONT = str(FONT_DIR / "Poppins-Bold.ttf")
+GEOMETRIC_ITALIC_FONT = str(FONT_DIR / "Poppins-SemiBoldItalic.ttf")
+BOUNCY_DISPLAY_FONT = str(FONT_DIR / "LuckiestGuy-Regular.ttf")
+BRUSH_SCRIPT_FONT = str(FONT_DIR / "KaushanScript-Regular.ttf")
 
 DEFAULT_TITLE_VARIANT = "Bold"
 DEFAULT_SUBTITLE_VARIANT = "Medium"
@@ -55,7 +60,12 @@ THEMES = {
 }
 
 
-def load_font(path: str, size: int, variant: str | None = None) -> ImageFont.ImageFont:
+def load_font(
+    path: str,
+    size: int,
+    variant: str | None = None,
+    axes: dict[str, float] | None = None,
+) -> ImageFont.ImageFont:
     try:
         font = ImageFont.truetype(path, size)
     except Exception:
@@ -64,6 +74,17 @@ def load_font(path: str, size: int, variant: str | None = None) -> ImageFont.Ima
         # Variable fonts expose named weight instances; static fonts raise.
         try:
             font.set_variation_by_name(variant)
+        except (OSError, ValueError):
+            pass
+    if axes:
+        # Raw axis values keyed by axis name ("Weight", "Optical Size", ...);
+        # axes not listed keep their default.
+        try:
+            values = []
+            for axis in font.get_variation_axes():
+                name = axis["name"].decode() if isinstance(axis["name"], bytes) else axis["name"]
+                values.append(axes.get(name, axis["default"]))
+            font.set_variation_by_axes(values)
         except (OSError, ValueError):
             pass
     return font

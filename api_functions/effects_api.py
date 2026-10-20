@@ -11,6 +11,8 @@ from PIL import Image, UnidentifiedImageError
 from api_functions.effects.black_bar import render as render_black_bar
 from api_functions.effects.frosted_glass import render as render_frosted_glass
 from api_functions.effects.layout import resolve_output_size
+from api_functions.effects.title_panel import VALID_STYLES as TITLE_PANEL_STYLES
+from api_functions.effects.title_panel import render as render_title_panel
 from api_functions.images import (
     add_timestamp_if_exists,
     make_public_url,
@@ -177,6 +179,58 @@ def _render_black_bar_sync(
     return response
 
 
+def _render_title_panel_sync(
+    *,
+    request: Request,
+    top_data: bytes,
+    bottom_data: bytes,
+    size,
+    style: str,
+    title: str,
+    subtitle: str,
+    brand: str,
+    accent_hex: str | None,
+    top_filename: str,
+    bottom_filename: str,
+) -> dict:
+    effect = "title_panel_triptych"
+    t0 = time.perf_counter()
+    top_img = _load_image(top_data)
+    bottom_img = _load_image(bottom_data)
+    logger.info(
+        "effect=%s style=%s input_sizes top=%s bottom=%s",
+        effect, style, top_img.size, bottom_img.size,
+    )
+    t = _phase("decode", effect, t0)
+
+    try:
+        result = render_title_panel(
+            image_top=top_img,
+            image_bottom=bottom_img,
+            title=title,
+            subtitle=subtitle,
+            brand=brand,
+            style=style,
+            accent_hex=accent_hex,
+            output_size=size,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        top_img.close()
+        bottom_img.close()
+    t = _phase("render", effect, t)
+
+    top_stem = Path(slugified_filename(top_filename)).stem
+    bottom_stem = Path(slugified_filename(bottom_filename)).stem
+    out_name = f"{top_stem}__{bottom_stem}_panel_{style}_{size.value}.jpeg"
+
+    response = _save_and_respond(request, result, filename=out_name)
+    _phase("save", effect, t)
+    logger.info("effect=%s total_ms=%.1f", effect, (time.perf_counter() - t0) * 1000)
+    return response
+
+
 async def apply_frosted_glass_triptych(
     request: Request,
     file_top: UploadFile,
@@ -264,6 +318,56 @@ async def apply_black_bar_triptych(
         brand=brand,
         band_fill_hex=_empty_to_none(band_fill_hex),
         band_text_hex=_empty_to_none(band_text_hex),
+        top_filename=file_top.filename,
+        bottom_filename=file_bottom.filename,
+    )
+
+
+async def apply_title_panel_triptych(
+    request: Request,
+    file_top: UploadFile,
+    file_bottom: UploadFile,
+    *,
+    style: str,
+    title: str,
+    subtitle: str,
+    brand: str,
+    accent_hex: str,
+    output_size: str,
+) -> dict:
+    effect = "title_panel_triptych"
+    logger.info("effect=%s received", effect)
+
+    # Validate cheap form fields before spending time on the uploads.
+    if style not in TITLE_PANEL_STYLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported style {style!r} (valid: {', '.join(TITLE_PANEL_STYLES)})",
+        )
+    try:
+        size = resolve_output_size(output_size)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    t0 = time.perf_counter()
+    top_data, _ = await read_and_validate_image_upload(file_top)
+    bottom_data, _ = await read_and_validate_image_upload(file_bottom)
+    logger.info(
+        "effect=%s upload_bytes top=%d bottom=%d receive_ms=%.1f",
+        effect, len(top_data), len(bottom_data), (time.perf_counter() - t0) * 1000,
+    )
+
+    return await asyncio.to_thread(
+        _render_title_panel_sync,
+        request=request,
+        top_data=top_data,
+        bottom_data=bottom_data,
+        size=size,
+        style=style,
+        title=title,
+        subtitle=subtitle,
+        brand=brand,
+        accent_hex=_empty_to_none(accent_hex),
         top_filename=file_top.filename,
         bottom_filename=file_bottom.filename,
     )

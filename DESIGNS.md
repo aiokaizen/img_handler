@@ -106,6 +106,24 @@ Reference: Juicy Pineapple Heaven Cake (Etsy digital download).
 
 **Extra params:** `ingredients` (list), `ingredients_title?` (default "What You Need:"), `accent_font_style?` ("script" | "italic").
 
+### 6. `title_panel_triptych`: shipped (needs visual sign-off)
+
+References: Bang Bang Rice Bowls, Cheesy Stuffed Meatloaf Bites, Creamy Pumpkin Chicken Soup, Creamy Italian Meatball Soup, Street Corn Creamy Cucumber Salad. All five are 1:2 pins, so the default output is `pin_1x2` (1000×2000).
+
+**Layout:** top photo · white title panel over the seam · bottom photo. One effect with five layouts picked by `style`. Geometry and type sizes were measured from the references and stored as fractions of the canvas. Panels grow with the text, so short and long titles keep the reference padding.
+
+| `style` | Panel | Title font | `subtitle` slot | Default accent |
+|---|---|---|---|---|
+| `ruled_band` | full-width band between thin black rules | Fraunces Bold (opsz 9, wonky off), tracked | outlined badge sitting on the lower rule | `#080808` rules + badge border |
+| `boxed_banner` | inset box with a heavy black border | Poppins Bold caps | tan banner across the box's bottom border, white italic caps | `#d7af6f` banner |
+| `double_frame` | inset panel with an inner hairline frame | Luckiest Guy caps | light Montserrat kicker line above the title | `#1e1e1e` frame |
+| `band_footer` | plain full-width band | Montserrat ExtraBold caps | solid footer strip at the bottom of the pin | `#000000` footer |
+| `diagonal_script` | band tilted 13.5° up to the right, colored edges | Montserrat ExtraBold caps | Kaushan Script sticker with a white outline on the band's top edge | `#6b2410` edges + script |
+
+**Text:** titles wrap to the fewest lines that fit, with line widths balanced. A newline in `title` forces a break. Long titles get one extra line before shrinking further.
+
+**Params:** `file_top`, `file_bottom`, `title`, `style?` (default `ruled_band`), `subtitle?`, `brand?` (small white text near the bottom of the pin), `accent_hex?`, `output_size?` (default `pin_1x2`).
+
 ## Delivery plan
 
 1. Ship `frosted_glass_triptych` end-to-end (CLI preview → visual validation → API endpoint).
