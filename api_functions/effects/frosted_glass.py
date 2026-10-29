@@ -4,6 +4,8 @@ from api_functions.effects import register_effect
 from api_functions.effects.colors import derive_palette
 from api_functions.effects.layout import (
     CANVAS_DIMENSIONS,
+    DEFAULT_FRAMING,
+    Framing,
     OutputSize,
     cover_crop,
     resolve_output_size,
@@ -118,14 +120,16 @@ def render(
     secondary_hex: str | None = None,
     tertiary_hex: str | None = None,
     output_size: str | OutputSize = OutputSize.PIN_2X3,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> Image.Image:
     size = resolve_output_size(output_size)
     canvas_w, canvas_h = CANVAS_DIMENSIONS[size]
 
     # --- Build the base canvas (two photos stacked, no band yet) -------------
     half_h = canvas_h // 2
-    top_panel = cover_crop(image_top, (canvas_w, half_h))
-    bottom_panel = cover_crop(image_bottom, (canvas_w, canvas_h - half_h))
+    top_panel = cover_crop(image_top, (canvas_w, half_h), top_framing)
+    bottom_panel = cover_crop(image_bottom, (canvas_w, canvas_h - half_h), bottom_framing)
 
     canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
     canvas.paste(top_panel, (0, 0))

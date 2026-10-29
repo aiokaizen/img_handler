@@ -5,12 +5,12 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import HTTPException, Request, UploadFile
+from fastapi import Form, HTTPException, Request, UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from api_functions.effects.black_bar import render as render_black_bar
 from api_functions.effects.frosted_glass import render as render_frosted_glass
-from api_functions.effects.layout import resolve_output_size
+from api_functions.effects.layout import DEFAULT_FRAMING, Framing, resolve_output_size
 from api_functions.effects.title_panel import VALID_STYLES as TITLE_PANEL_STYLES
 from api_functions.effects.title_panel import render as render_title_panel
 from api_functions.images import (
@@ -36,6 +36,33 @@ def _load_image(data: bytes) -> Image.Image:
 def _empty_to_none(value: str) -> str | None:
     value = (value or "").strip()
     return value or None
+
+
+def _framing(zoom: float, focus_x: float, focus_y: float, flip: bool, *, photo: str) -> Framing:
+    try:
+        return Framing(zoom=zoom, focus_x=focus_x, focus_y=focus_y, flip=flip)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{photo}_{exc}") from exc
+
+
+def top_framing_form(
+    top_zoom: float = Form(1.0),
+    top_focus_x: float = Form(0.5),
+    top_focus_y: float = Form(0.5),
+    top_flip: bool = Form(False),
+) -> Framing:
+    """Optional framing of the top photo (see `Framing`). The defaults keep the plain centered fit."""
+    return _framing(top_zoom, top_focus_x, top_focus_y, top_flip, photo="top")
+
+
+def bottom_framing_form(
+    bottom_zoom: float = Form(1.0),
+    bottom_focus_x: float = Form(0.5),
+    bottom_focus_y: float = Form(0.5),
+    bottom_flip: bool = Form(False),
+) -> Framing:
+    """Optional framing of the bottom photo (see `Framing`). The defaults keep the plain centered fit."""
+    return _framing(bottom_zoom, bottom_focus_x, bottom_focus_y, bottom_flip, photo="bottom")
 
 
 def _save_and_respond(
@@ -83,6 +110,8 @@ def _render_frosted_sync(
     tertiary_hex: str | None,
     top_filename: str,
     bottom_filename: str,
+    top_framing: Framing,
+    bottom_framing: Framing,
 ) -> dict:
     effect = "frosted_glass_triptych"
     t0 = time.perf_counter()
@@ -105,6 +134,8 @@ def _render_frosted_sync(
             secondary_hex=secondary_hex,
             tertiary_hex=tertiary_hex,
             output_size=size,
+            top_framing=top_framing,
+            bottom_framing=bottom_framing,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -138,6 +169,8 @@ def _render_black_bar_sync(
     band_text_hex: str | None,
     top_filename: str,
     bottom_filename: str,
+    top_framing: Framing,
+    bottom_framing: Framing,
 ) -> dict:
     effect = "black_bar_triptych"
     t0 = time.perf_counter()
@@ -161,6 +194,8 @@ def _render_black_bar_sync(
             band_fill_hex=band_fill_hex,
             band_text_hex=band_text_hex,
             output_size=size,
+            top_framing=top_framing,
+            bottom_framing=bottom_framing,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -192,6 +227,8 @@ def _render_title_panel_sync(
     accent_hex: str | None,
     top_filename: str,
     bottom_filename: str,
+    top_framing: Framing,
+    bottom_framing: Framing,
 ) -> dict:
     effect = "title_panel_triptych"
     t0 = time.perf_counter()
@@ -213,6 +250,8 @@ def _render_title_panel_sync(
             style=style,
             accent_hex=accent_hex,
             output_size=size,
+            top_framing=top_framing,
+            bottom_framing=bottom_framing,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -243,6 +282,8 @@ async def apply_frosted_glass_triptych(
     secondary_hex: str,
     tertiary_hex: str,
     output_size: str,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> dict:
     effect = "frosted_glass_triptych"
     logger.info("effect=%s received", effect)
@@ -273,6 +314,8 @@ async def apply_frosted_glass_triptych(
         tertiary_hex=_empty_to_none(tertiary_hex),
         top_filename=file_top.filename,
         bottom_filename=file_bottom.filename,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )
 
 
@@ -289,6 +332,8 @@ async def apply_black_bar_triptych(
     band_fill_hex: str,
     band_text_hex: str,
     output_size: str,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> dict:
     effect = "black_bar_triptych"
     logger.info("effect=%s received", effect)
@@ -320,6 +365,8 @@ async def apply_black_bar_triptych(
         band_text_hex=_empty_to_none(band_text_hex),
         top_filename=file_top.filename,
         bottom_filename=file_bottom.filename,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )
 
 
@@ -334,6 +381,8 @@ async def apply_title_panel_triptych(
     brand: str,
     accent_hex: str,
     output_size: str,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> dict:
     effect = "title_panel_triptych"
     logger.info("effect=%s received", effect)
@@ -370,4 +419,6 @@ async def apply_title_panel_triptych(
         accent_hex=_empty_to_none(accent_hex),
         top_filename=file_top.filename,
         bottom_filename=file_bottom.filename,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )

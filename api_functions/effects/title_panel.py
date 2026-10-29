@@ -8,6 +8,8 @@ from api_functions.effects import register_effect
 from api_functions.effects.colors import parse_hex_color
 from api_functions.effects.layout import (
     CANVAS_DIMENSIONS,
+    DEFAULT_FRAMING,
+    Framing,
     OutputSize,
     cover_crop,
     resolve_output_size,
@@ -229,12 +231,14 @@ def _photo_stack(
     top_h: int,
     bottom_y: int,
     bottom_h: int | None = None,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> Image.Image:
     w, h = size
     bottom_h = h - bottom_y if bottom_h is None else bottom_h
     canvas = Image.new("RGB", size, PANEL)
-    canvas.paste(cover_crop(image_bottom, (w, bottom_h)), (0, bottom_y))
-    canvas.paste(cover_crop(image_top, (w, top_h)), (0, 0))
+    canvas.paste(cover_crop(image_bottom, (w, bottom_h), bottom_framing), (0, bottom_y))
+    canvas.paste(cover_crop(image_top, (w, top_h), top_framing), (0, 0))
     return canvas
 
 
@@ -261,7 +265,7 @@ def _draw_brand(canvas: Image.Image, brand: str, *, center_y: float) -> None:
     _draw_block(draw, block, center_x=w / 2, top=top, fill=(255, 255, 255, 240))
 
 
-def _ruled_band(image_top, image_bottom, size, *, title, subtitle, accent):
+def _ruled_band(image_top, image_bottom, size, *, title, subtitle, accent, top_framing, bottom_framing):
     """Full-width white band between two black rules, serif title, outlined badge on the lower rule."""
     w, h = size
     rule = max(3, round(h * 0.003))
@@ -281,7 +285,10 @@ def _ruled_band(image_top, image_bottom, size, *, title, subtitle, accent):
     band_top = round(h * 0.495 - band_h / 2)
     band_bottom = band_top + band_h
 
-    canvas = _photo_stack(image_top, image_bottom, size, top_h=band_top, bottom_y=band_bottom)
+    canvas = _photo_stack(
+        image_top, image_bottom, size, top_h=band_top, bottom_y=band_bottom,
+        top_framing=top_framing, bottom_framing=bottom_framing,
+    )
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((0, band_top, w, band_bottom - 1), fill=accent)
     draw.rectangle((0, band_top + rule, w, band_bottom - rule - 1), fill=PANEL)
@@ -298,7 +305,7 @@ def _ruled_band(image_top, image_bottom, size, *, title, subtitle, accent):
     return canvas, h * BRAND_CENTER_Y
 
 
-def _boxed_banner(image_top, image_bottom, size, *, title, subtitle, accent):
+def _boxed_banner(image_top, image_bottom, size, *, title, subtitle, accent, top_framing, bottom_framing):
     """Inset white box with a black border, bold caps title, colored banner across the bottom border."""
     w, h = size
     border = max(4, round(w * 0.0068))
@@ -320,7 +327,10 @@ def _boxed_banner(image_top, image_bottom, size, *, title, subtitle, accent):
     box_bottom = box_top + box_h
 
     seam = h // 2
-    canvas = _photo_stack(image_top, image_bottom, size, top_h=seam, bottom_y=seam)
+    canvas = _photo_stack(
+        image_top, image_bottom, size, top_h=seam, bottom_y=seam,
+        top_framing=top_framing, bottom_framing=bottom_framing,
+    )
     draw = ImageDraw.Draw(canvas, "RGBA")
     draw.rectangle((inset, box_top, w - inset - 1, box_bottom - 1), fill=PANEL, outline=INK, width=border)
     _draw_block(draw, title_block, center_x=w / 2, top=box_top + border + pad_top, fill=INK)
@@ -337,7 +347,7 @@ def _boxed_banner(image_top, image_bottom, size, *, title, subtitle, accent):
     return canvas, h * BRAND_CENTER_Y
 
 
-def _double_frame(image_top, image_bottom, size, *, title, subtitle, accent):
+def _double_frame(image_top, image_bottom, size, *, title, subtitle, accent, top_framing, bottom_framing):
     """Inset white panel with an inner hairline frame, light kicker line over a chunky caps title."""
     w, h = size
     outer_x = round(w * 0.02)
@@ -358,7 +368,10 @@ def _double_frame(image_top, image_bottom, size, *, title, subtitle, accent):
     panel_bottom = panel_top + panel_h
 
     seam = panel_top + panel_h // 2
-    canvas = _photo_stack(image_top, image_bottom, size, top_h=seam, bottom_y=seam)
+    canvas = _photo_stack(
+        image_top, image_bottom, size, top_h=seam, bottom_y=seam,
+        top_framing=top_framing, bottom_framing=bottom_framing,
+    )
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((outer_x, panel_top, w - outer_x - 1, panel_bottom - 1), fill=PANEL)
     draw.rectangle(
@@ -375,7 +388,7 @@ def _double_frame(image_top, image_bottom, size, *, title, subtitle, accent):
     return canvas, h * BRAND_CENTER_Y
 
 
-def _band_footer(image_top, image_bottom, size, *, title, subtitle, accent):
+def _band_footer(image_top, image_bottom, size, *, title, subtitle, accent, top_framing, bottom_framing):
     """Plain full-width white band with heavy caps title, solid footer strip with a short call to action."""
     w, h = size
     pad_top = round(h * 0.019)
@@ -390,6 +403,7 @@ def _band_footer(image_top, image_bottom, size, *, title, subtitle, accent):
     canvas = _photo_stack(
         image_top, image_bottom, size,
         top_h=band_top, bottom_y=band_bottom, bottom_h=h - footer_h - band_bottom,
+        top_framing=top_framing, bottom_framing=bottom_framing,
     )
     draw = ImageDraw.Draw(canvas)
     draw.rectangle((0, band_top, w, band_bottom - 1), fill=PANEL)
@@ -403,7 +417,7 @@ def _band_footer(image_top, image_bottom, size, *, title, subtitle, accent):
     return canvas, h - footer_h - h * 0.04
 
 
-def _diagonal_script(image_top, image_bottom, size, *, title, subtitle, accent):
+def _diagonal_script(image_top, image_bottom, size, *, title, subtitle, accent, top_framing, bottom_framing):
     """White band tilted up to the right with colored edges, script sticker riding its top edge."""
     w, h = size
     ss = SUPERSAMPLE
@@ -416,10 +430,10 @@ def _diagonal_script(image_top, image_bottom, size, *, title, subtitle, accent):
     top_h = math.ceil(left_y)
     bottom_y = math.floor(right_y)
     canvas = Image.new("RGB", size, PANEL)
-    canvas.paste(cover_crop(image_bottom, (w, h - bottom_y)), (0, bottom_y))
+    canvas.paste(cover_crop(image_bottom, (w, h - bottom_y), bottom_framing), (0, bottom_y))
     mask = Image.new("L", (w, top_h), 0)
     ImageDraw.Draw(mask).polygon([(0, 0), (w, 0), (w, right_y), (0, left_y)], fill=255)
-    canvas.paste(cover_crop(image_top, (w, top_h)), (0, 0), mask)
+    canvas.paste(cover_crop(image_top, (w, top_h), top_framing), (0, 0), mask)
 
     # Band, drawn flat at supersample scale and long enough to span the canvas once tilted.
     edge = max(4, round(h * 0.005)) * ss
@@ -486,6 +500,8 @@ def render(
     secondary_hex: str | None = None,
     tertiary_hex: str | None = None,
     output_size: str | OutputSize = OutputSize.PIN_1X2,
+    top_framing: Framing = DEFAULT_FRAMING,
+    bottom_framing: Framing = DEFAULT_FRAMING,
 ) -> Image.Image:
     """
     Styles (`subtitle` fills each style's secondary slot):
@@ -511,6 +527,8 @@ def render(
         title=title.strip(),
         subtitle=(subtitle or "").strip(),
         accent=accent,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )
     if brand and brand.strip():
         _draw_brand(canvas, brand.strip(), center_y=brand_y)

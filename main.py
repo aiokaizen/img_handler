@@ -5,7 +5,10 @@ from api_functions.effects_api import (
     apply_black_bar_triptych,
     apply_frosted_glass_triptych,
     apply_title_panel_triptych,
+    bottom_framing_form,
+    top_framing_form,
 )
+from api_functions.effects.layout import Framing
 from api_functions.images import process_image, upload_single_image, get_single_image
 from api_functions.video_jobs import (
     create_recipe_video_job,
@@ -143,6 +146,8 @@ async def frosted_glass_triptych_endpoint(
     secondary_hex: str = Form(""),
     tertiary_hex: str = Form(""),
     output_size: str = Form("pin_2x3"),
+    top_framing: Framing = Depends(top_framing_form),
+    bottom_framing: Framing = Depends(bottom_framing_form),
     _: None = Depends(require_token),
 ):
     for f in (file_top, file_bottom):
@@ -162,6 +167,8 @@ async def frosted_glass_triptych_endpoint(
         secondary_hex=secondary_hex,
         tertiary_hex=tertiary_hex,
         output_size=output_size,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )
 
 
@@ -178,6 +185,8 @@ async def black_bar_triptych_endpoint(
     band_fill_hex: str = Form(""),
     band_text_hex: str = Form(""),
     output_size: str = Form("pin_2x3"),
+    top_framing: Framing = Depends(top_framing_form),
+    bottom_framing: Framing = Depends(bottom_framing_form),
     _: None = Depends(require_token),
 ):
     for f in (file_top, file_bottom):
@@ -198,6 +207,8 @@ async def black_bar_triptych_endpoint(
         band_fill_hex=band_fill_hex,
         band_text_hex=band_text_hex,
         output_size=output_size,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )
 
 
@@ -212,6 +223,8 @@ async def title_panel_triptych_endpoint(
     brand: str = Form(""),
     accent_hex: str = Form(""),
     output_size: str = Form("pin_1x2"),
+    top_framing: Framing = Depends(top_framing_form),
+    bottom_framing: Framing = Depends(bottom_framing_form),
     _: None = Depends(require_token),
 ):
     for f in (file_top, file_bottom):
@@ -230,4 +243,6 @@ async def title_panel_triptych_endpoint(
         brand=brand,
         accent_hex=accent_hex,
         output_size=output_size,
+        top_framing=top_framing,
+        bottom_framing=bottom_framing,
     )

@@ -31,6 +31,16 @@ Auto-extraction: downscale top image to 100px, quantize to 5 clusters (median-cu
 
 All triptych designs take two separate images (`file_top`, `file_bottom`). Typical pairing: whole dish + sliced/served cross-section, or overhead + 3/4 angle.
 
+### Photo framing
+
+Each photo is scaled to cover its slot and cropped. By default the crop is centered. Every triptych endpoint also takes optional framing fields per photo, so the same photo can sit top and bottom and still look different:
+
+- `top_zoom` / `bottom_zoom`: 1.0 to 3.0, default 1.0. Crops tighter than the plain fit. Above about 1.5 a 1200px photo starts to look soft.
+- `top_focus_x`, `top_focus_y` / `bottom_focus_x`, `bottom_focus_y`: 0.0 to 1.0, default 0.5. The point of the photo the crop centers on, as a fraction of its width and height. The crop is pushed back inside the photo near the edges, so focus only moves the crop where the photo overflows the slot (or when zoomed).
+- `top_flip` / `bottom_flip`: default false. Mirrors the photo left to right. Avoid it on photos with text in them.
+
+Out-of-range values return `400`. With all defaults the output is pixel-identical to the plain centered crop.
+
 ### Fonts (v1)
 
 DejaVu Serif Bold (title) + DejaVu Sans (subtitle/brand). Not final — reference pins use condensed sans (Bebas/Anton) or display serif (Playfair). Font-bundling is a later iteration once one design is visually validated.
@@ -158,6 +168,9 @@ POST /images/effects/frosted_glass_triptych
   secondary_hex: "#3d2d24"      (optional)
   tertiary_hex: "#7a6658"       (optional)
   output_size: "pin_2x3"        (default pin_2x3; also pin_1x2)
+  bottom_zoom: 1.3              (optional framing, see "Photo framing")
+  bottom_focus_x: 0.35          (optional)
+  bottom_flip: true             (optional)
 ```
 
 ## Non-goals (for now)
