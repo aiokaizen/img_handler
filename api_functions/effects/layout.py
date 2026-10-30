@@ -8,11 +8,13 @@ from PIL import Image, ImageOps
 class OutputSize(str, Enum):
     PIN_2X3 = "pin_2x3"   # 1000x1500 — standard pin
     PIN_1X2 = "pin_1x2"   # 1000x2000 — tall pin
+    PIN_10X21 = "pin_10x21"   # 1200x2520, the tallest pin Pinterest shows uncut (1:2.1)
 
 
 CANVAS_DIMENSIONS: dict[OutputSize, tuple[int, int]] = {
     OutputSize.PIN_2X3: (1000, 1500),
     OutputSize.PIN_1X2: (1000, 2000),
+    OutputSize.PIN_10X21: (1200, 2520),
 }
 
 

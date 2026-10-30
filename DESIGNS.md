@@ -16,6 +16,7 @@ All designs target Pinterest-optimized vertical aspect ratios, selectable per re
 
 - `pin_2x3` → 1000×1500 (standard pin)
 - `pin_1x2` → 1000×2000 (tall pin)
+- `pin_10x21` → 1200×2520 (tallest pin Pinterest shows without cutting it, 1:2.1)
 
 ### Color model (three-hex palette)
 
@@ -145,7 +146,7 @@ References: Bang Bang Rice Bowls, Cheesy Stuffed Meatloaf Bites, Creamy Pumpkin 
 
 - `api_functions/effects/__init__.py` — effect registry (decorator-based), protocol, lookup helpers.
 - `api_functions/effects/colors.py` — hex parsing, dominant-color extraction, three-color palette derivation.
-- `api_functions/effects/layout.py` — canvas builders (`pin_2x3`, `pin_1x2`), cover-crop for panel fitting.
+- `api_functions/effects/layout.py` — canvas builders (`pin_2x3`, `pin_1x2`, `pin_10x21`), cover-crop for panel fitting.
 - `api_functions/effects/<effect_name>.py` — one file per effect, uses `@register_effect(...)` to self-register.
 - `api_functions/effects_api.py` — request wrappers (validation, save, public URL) sitting between FastAPI and the pure-image effect functions.
 - `scripts/preview_effects.py` — CLI that picks random pairs from `assets/` and renders all registered effects for side-by-side review.
@@ -167,7 +168,7 @@ POST /images/effects/frosted_glass_triptych
   primary_hex: "#f4b5c2"        (optional — auto-extracted if omitted)
   secondary_hex: "#3d2d24"      (optional)
   tertiary_hex: "#7a6658"       (optional)
-  output_size: "pin_2x3"        (default pin_2x3; also pin_1x2)
+  output_size: "pin_2x3"        (default pin_2x3; also pin_1x2, pin_10x21)
   bottom_zoom: 1.3              (optional framing, see "Photo framing")
   bottom_focus_x: 0.35          (optional)
   bottom_flip: true             (optional)
